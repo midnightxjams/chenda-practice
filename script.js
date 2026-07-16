@@ -1,4 +1,4 @@
-const THAKAA_INTERNAL_PAUSE_BEATS = 0.75;
+const THAKAA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKAA_TRAILING_GAP_BEATS = 1.0;
 const TA_PICKUP_GAP_BEATS = 1.0;
 const WORD_DEFINITIONS = {
@@ -24,7 +24,7 @@ const WORD_DEFINITIONS = {
     durationBeats: 2 + THAKAA_INTERNAL_PAUSE_BEATS,
     colorClass: "word-thakaa",
     color: { fill: "#60d67f", glow: "rgba(96,214,127,.72)", text: "#07100a" },
-    description: "Right, 0.75-beat pause, Left, then 1 full silent beat before the next word."
+    description: "Right, 0.5-beat pause, Left, then 1 full silent beat before the next word."
   },
   THAKKA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: true }, { hand: "L", offsetBeats: 1, accented: false }],
