@@ -1,4 +1,5 @@
-const THAKAA_PAUSE_BEATS = 1.0;
+const THAKAA_PAUSE_BEATS = 0.75;
+const THAKAA_TRAILING_GAP_BEATS = 0.5;
 const TA_PICKUP_GAP_BEATS = 1.0;
 const WORD_DEFINITIONS = {
   TA: {
@@ -19,10 +20,11 @@ const WORD_DEFINITIONS = {
   },
   THAKAA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1 + THAKAA_PAUSE_BEATS, accented: false }],
-    durationBeats: 2 + THAKAA_PAUSE_BEATS,
+    trailingGapBeats: THAKAA_TRAILING_GAP_BEATS,
+    durationBeats: 1 + THAKAA_PAUSE_BEATS + THAKAA_TRAILING_GAP_BEATS,
     colorClass: "word-thakaa",
     color: { fill: "#60d67f", glow: "rgba(96,214,127,.72)", text: "#07100a" },
-    description: "Right, one silent beat, then Left."
+    description: "Right, 0.75-beat pause, Left, then a 0.5-beat gap before the next word."
   },
   THAKKA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: true }, { hand: "L", offsetBeats: 1, accented: false }],
@@ -68,7 +70,7 @@ function formatTime(ms) { const total = Math.max(0, Math.floor(ms / 1000)); cons
 function updatePlayTimer(now) { if (playTimerEl) playTimerEl.textContent = formatTime(now); }
 function parsePattern() { const raw = patternInput.value.toUpperCase().match(/[A-Z]+/g) || []; const bad = []; baseWords = []; raw.forEach(word => wordDef(word) ? baseWords.push(word) : bad.push(word)); if (!baseWords.length) baseWords = ["TA"]; warning.textContent = bad.length ? "Ignored: " + [...new Set(bad)].join(", ") : ""; buildTimeline(); completedLoops = 0; updateInfo(0); updatePlayTimer(pauseElapsed); }
 function shouldAddPickupGapAt(sourceIndex) { const word = baseWords[sourceIndex]; const def = wordDef(word); if (!def || !def.pickupGapAfterBeats || sourceIndex >= baseWords.length - 1) return 0; const nextWord = baseWords[sourceIndex + 1]; if (def.pickupTarget === "nextNonTA" && nextWord !== "TA") return def.pickupGapAfterBeats; return 0; }
-function appendPatternLoop() { const loopNumber = builtLoopCount; baseWords.forEach((word, sourceIndex) => { const def = wordDef(word); const index = words.length; const startBeat = totalBeats; words.push(word); def.hits.forEach((part, offsetIndex) => { hits.push({ hand: part.hand, accent: !!part.accented, word, wordIndex: index, part: offsetIndex, timeBeat: startBeat + part.offsetBeats, loopNumber: loopNumber + 1 }); }); groups.push({ word, index, startBeat, endBeat: startBeat + def.durationBeats - 1, centerBeat: startBeat + (def.durationBeats - 1) / 2, loopNumber: loopNumber + 1 }); totalBeats += def.durationBeats; totalBeats += shouldAddPickupGapAt(sourceIndex); }); loopEndBeats.push(totalBeats); builtLoopCount++; }
+function appendPatternLoop() { const loopNumber = builtLoopCount; baseWords.forEach((word, sourceIndex) => { const def = wordDef(word); const index = words.length; const startBeat = totalBeats; const lastHitOffset = Math.max(...def.hits.map(hit => hit.offsetBeats)); const hasNextWord = sourceIndex < baseWords.length - 1; const wordAdvance = def.durationBeats - (!hasNextWord && def.trailingGapBeats ? def.trailingGapBeats : 0); words.push(word); def.hits.forEach((part, offsetIndex) => { hits.push({ hand: part.hand, accent: !!part.accented, word, wordIndex: index, part: offsetIndex, timeBeat: startBeat + part.offsetBeats, loopNumber: loopNumber + 1 }); }); groups.push({ word, index, startBeat, endBeat: startBeat + lastHitOffset, centerBeat: startBeat + lastHitOffset / 2, loopNumber: loopNumber + 1 }); totalBeats += wordAdvance; totalBeats += shouldAddPickupGapAt(sourceIndex); }); loopEndBeats.push(totalBeats); builtLoopCount++; }
 function buildTimeline() { hits = []; groups = []; words = []; loopEndBeats = []; builtLoopCount = 0; totalBeats = countInBeats + prepGapBeats; const loopsToBuild = isInfiniteLoop() ? 8 : loopCount; for (let i = 0; i < loopsToBuild; i++) appendPatternLoop(); }
 function ensureInfiniteTimeline(nowBeat) { if (!isInfiniteLoop()) return; while (totalBeats - nowBeat < 32) appendPatternLoop(); }
 function updateInfo(now) { wordCountEl.textContent = isInfiniteLoop() ? baseWords.length + "x\u221e" : words.length; hitCountEl.textContent = isInfiniteLoop() ? hits.length + "+" : hits.length; const b = now / beatMs(); if (b < countInBeats) { nowWordEl.textContent = String(Math.min(4, Math.floor(b) + 1)); return; } if (b < countInBeats + prepGapBeats) { nowWordEl.textContent = "Ready"; return; } const active = groups.find(g => b >= g.startBeat - .22 && b <= g.endBeat + .22); nowWordEl.textContent = active ? active.word : "-"; }
