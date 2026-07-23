@@ -48,7 +48,7 @@ const WORD_ORDER = Object.keys(WORD_DEFINITIONS).sort((a, b) => b.length - a.len
 const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA"];
 const LEGACY_WORD_ALIASES = { TA: "THA" };
 const $ = id => document.getElementById(id);
-const app = $("app"), canvas = $("lane"), ctx = canvas.getContext("2d"), patternInput = $("patternInput"), warning = $("warning"), bpm = $("bpm"), bpmNumber = $("bpmNumber"), startBtn = $("start"), stopBtn = $("stop"), restartBtn = $("restart"), metronomeToggle = $("metronomeToggle"), metronomeVolume = $("metronomeVolume"), metronomeSubdivision = $("metronomeSubdivision"), fullscreenBtn = $("fullscreen"), fullscreenStopBtn = $("fullscreenStop"), fullscreenRestartBtn = $("fullscreenRestart"), exitFullscreenBtn = $("exitFullscreen"), savePatternBtn = $("savePattern"), loadPatternBtn = $("loadPattern"), deletePatternBtn = $("deletePattern"), savedPatternsSelect = $("savedPatterns"), savedSongsSelect = $("savedSongs"), newSongBtn = $("newSong"), editSongBtn = $("editSong"), deleteSongBtn = $("deleteSong"), saveAsBassBtn = $("saveAsBass"), saveAsTrebleBtn = $("saveAsTreble"), songPracticeLabel = $("songPracticeLabel"), songModal = $("songModal"), songModalTitle = $("songModalTitle"), songNameInput = $("songNameInput"), bassPatternInput = $("bassPatternInput"), treblePatternInput = $("treblePatternInput"), saveSongBtn = $("saveSong"), cancelSongBtn = $("cancelSong"), cancelSongTopBtn = $("cancelSongTop"), compactToggle = $("compactToggle"), stateEl = $("state"), wordCountEl = $("wordCount"), hitCountEl = $("hitCount"), nowWordEl = $("nowWord"), playTimerEl = $("playTimer"), insertButtonsEl = $("insertButtons"), wordDefinitionListEl = $("wordDefinitionList");
+const app = $("app"), canvas = $("lane"), ctx = canvas.getContext("2d"), patternInput = $("patternInput"), warning = $("warning"), bpm = $("bpm"), bpmNumber = $("bpmNumber"), startBtn = $("start"), stopBtn = $("stop"), restartBtn = $("restart"), metronomeToggle = $("metronomeToggle"), metronomeVolume = $("metronomeVolume"), metronomeSubdivision = $("metronomeSubdivision"), fullscreenBtn = $("fullscreen"), fullscreenStopBtn = $("fullscreenStop"), fullscreenRestartBtn = $("fullscreenRestart"), exitFullscreenBtn = $("exitFullscreen"), savePatternBtn = $("savePattern"), loadPatternBtn = $("loadPattern"), deletePatternBtn = $("deletePattern"), savedPatternsSelect = $("savedPatterns"), savedSongsSelect = $("savedSongs"), newSongBtn = $("newSong"), editSongBtn = $("editSong"), deleteSongBtn = $("deleteSong"), bassPartBtn = $("bassPartButton"), treblePartBtn = $("treblePartButton"), saveAsBassBtn = $("saveAsBass"), saveAsTrebleBtn = $("saveAsTreble"), songPracticeLabel = $("songPracticeLabel"), songModal = $("songModal"), songModalTitle = $("songModalTitle"), songNameInput = $("songNameInput"), bassPatternInput = $("bassPatternInput"), treblePatternInput = $("treblePatternInput"), saveSongBtn = $("saveSong"), cancelSongBtn = $("cancelSong"), cancelSongTopBtn = $("cancelSongTop"), compactToggle = $("compactToggle"), stateEl = $("state"), wordCountEl = $("wordCount"), hitCountEl = $("hitCount"), nowWordEl = $("nowWord"), playTimerEl = $("playTimer"), insertButtonsEl = $("insertButtons"), wordDefinitionListEl = $("wordDefinitionList");
 let baseWords = [], words = [], hits = [], groups = [], loopEndBeats = [], running = false, startTime = 0, pauseElapsed = 0, raf = 0, loopCount = 4, builtLoopCount = 0, totalBeats = 0, completedLoops = 0, compactLanes = true, metronomeOn = false, lastMetronomeBeat = -1, audioContext = null, currentSongId = "", selectedSongPart = "bass", editingSongId = "";
 const countInBeats = 4, prepGapBeats = 4, hitFadeBeats = .34;
 const patternLibraryKey = "chendaPracticePatterns";
@@ -75,10 +75,11 @@ function refreshSavedSongs(selectedId = currentSongId) { const songs = readSongL
 function setSongPart(part, { load = true } = {}) { selectedSongPart = part === "treble" ? "treble" : "bass"; document.querySelectorAll("[data-part]").forEach(button => button.classList.toggle("active", button.dataset.part === selectedSongPart)); const songs = readSongLibrary(); const song = songs.find(item => item.id === currentSongId); if (song) { song.lastPart = selectedSongPart; writeSongLibrary(songs); if (load) loadSongPart(song); } updateSongPracticeLabel(); }
 function loadSongPart(song = findSong()) { if (!song) { updateSongPracticeLabel(); return; } const was = running; if (was) stopReference(); patternInput.value = normalizePatternText(song.parts[selectedSongPart] || ""); parsePattern(); pauseElapsed = 0; draw(0); if (was) startReference(); updateSongPracticeLabel(); }
 function selectSong(id) { currentSongId = id || ""; const song = findSong(); if (!song) { updateSongPracticeLabel(); return; } setSongPart(preferredSongPart(song), { load: false }); loadSongPart(song); }
-function openSongEditor(song = null) { editingSongId = song ? song.id : ""; songModalTitle.textContent = song ? "Edit Song" : "New Song"; songNameInput.value = song ? song.name : ""; bassPatternInput.value = song ? song.parts.bass || "" : ""; treblePatternInput.value = song ? song.parts.treble || "" : ""; songModal.hidden = false; }
+function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
+function openSongEditor(song = null) { editingSongId = song ? song.id : ""; songModalTitle.textContent = song ? "Edit Song" : "New Song"; songNameInput.value = song ? song.name : ""; bassPatternInput.value = song ? song.parts.bass || "" : ""; treblePatternInput.value = song ? song.parts.treble || "" : ""; songModal.hidden = false; if (isDesktopViewport()) setTimeout(() => songNameInput.focus(), 0); }
 function closeSongEditor() { songModal.hidden = true; editingSongId = ""; }
 function saveSongFromEditor() { const name = songNameInput.value.trim(); if (!name) { window.alert("Enter a song name."); return; } if (!validateSongPattern(bassPatternInput.value, "Bass pattern") || !validateSongPattern(treblePatternInput.value, "Treble pattern")) return; const songs = readSongLibrary(); let song = songs.find(item => item.id === editingSongId); if (!song) { song = { id: "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), name, parts: { bass: "", treble: "" }, lastPart: selectedSongPart }; songs.push(song); } song.name = name; song.parts = { bass: normalizePatternText(bassPatternInput.value), treble: normalizePatternText(treblePatternInput.value) }; song.lastPart = preferredSongPart(song); writeSongLibrary(songs); currentSongId = song.id; closeSongEditor(); refreshSavedSongs(song.id); selectSong(song.id); }
-function deleteSelectedSong() { const song = findSong(); if (!song) return; if (!window.confirm("Delete saved song: " + song.name + "?")) return; const songs = readSongLibrary().filter(item => item.id !== song.id); writeSongLibrary(songs); currentSongId = ""; refreshSavedSongs(""); updateSongPracticeLabel(); }
+function deleteSelectedSong() { const song = findSong(); if (!song) { window.alert("Select a song to delete."); return; } if (!window.confirm("Delete saved song: " + song.name + "?")) return; const songs = readSongLibrary().filter(item => item.id !== song.id); writeSongLibrary(songs); currentSongId = ""; refreshSavedSongs(""); updateSongPracticeLabel(); }
 function saveCurrentPatternAsPart(part) { const song = findSong(); if (!song) { window.alert("Create or select a song first."); return; } const key = part === "treble" ? "treble" : "bass"; const label = key === "treble" ? "Treble" : "Bass"; if (!validateSongPattern(patternInput.value, label + " pattern")) return; if ((song.parts[key] || "").trim() && !window.confirm("Replace the saved " + label + " part for " + song.name + "?")) return; const songs = readSongLibrary(); const target = songs.find(item => item.id === song.id); if (!target) return; target.parts[key] = normalizePatternText(patternInput.value); target.lastPart = key; writeSongLibrary(songs); selectedSongPart = key; refreshSavedSongs(target.id); setSongPart(key, { load: false }); updateSongPracticeLabel(); }
 function ensureAudioContext() { const AudioCtor = window.AudioContext || window.webkitAudioContext; if (!AudioCtor) return null; if (!audioContext) audioContext = new AudioCtor(); if (audioContext.state === "suspended") audioContext.resume(); return audioContext; }
 function playMetronomeClick(strong = false) { if (!metronomeOn) return; const context = ensureAudioContext(); if (!context) return; const now = context.currentTime; const volume = Math.max(0, Math.min(1, Number(metronomeVolume.value) || 0)); const gain = context.createGain(); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime((strong ? .12 : .075) * volume, now + .004); gain.gain.exponentialRampToValueAtTime(0.0001, now + (strong ? .075 : .055)); gain.connect(context.destination); const osc = context.createOscillator(); osc.type = strong ? "triangle" : "sine"; osc.frequency.setValueAtTime(strong ? 520 : 920, now); osc.frequency.exponentialRampToValueAtTime(strong ? 360 : 760, now + .045); osc.connect(gain); osc.start(now); osc.stop(now + .08); }
@@ -125,41 +126,53 @@ async function exitPracticeFullscreen() { try { if (document.fullscreenElement &
 function syncFullscreenState() { if (!document.fullscreenElement && app.classList.contains("practiceFullscreen")) setFullscreenMode(false); }
 function hitLegend(def) { const sorted = [...def.hits].sort((a, b) => a.offsetBeats - b.offsetBeats); const parts = []; sorted.forEach((hit, index) => { if (index) { const gap = hit.offsetBeats - sorted[index - 1].offsetBeats; if (gap > 1) parts.push("pause"); } parts.push(hit.accented ? "accented " + hit.hand : hit.hand); }); return parts.join(parts.includes("pause") || parts.some(p => p.startsWith("accented")) ? ", " : " "); }
 function renderWordControls() { insertButtonsEl.innerHTML = ""; wordDefinitionListEl.innerHTML = ""; supportedWords().forEach(word => { const def = wordDef(word); const button = document.createElement("button"); button.type = "button"; button.className = "wordButton " + def.colorClass; button.dataset.insert = word; button.textContent = word; insertButtonsEl.appendChild(button); const row = document.createElement("div"); row.className = "mapRow definitionRow"; const label = document.createElement("span"); label.className = "wordLabel " + def.colorClass + (def.hits.some(hit => hit.accented) ? " accentLabel" : ""); label.textContent = word; const text = document.createElement("span"); text.className = "definitionText"; text.textContent = hitLegend(def) + (def.pickupGapAfterBeats ? "; pause before the next word" : "") + (def.trailingGapBeats ? "; trailing gap " + def.trailingGapBeats + " beat" : ""); row.append(label, text); wordDefinitionListEl.appendChild(row); }); document.querySelectorAll(".wordButton").forEach(button => { button.addEventListener("pointerdown", event => event.preventDefault()); button.addEventListener("click", () => insertWord(button.dataset.insert)); }); }
-bpm.addEventListener("input", () => applyBpm(bpm.value, { restart: true }));
-bpmNumber.addEventListener("input", () => { bpm.value = String(clampBpm(bpmNumber.value)); draw(pauseElapsed); });
-bpmNumber.addEventListener("change", () => applyBpm(bpmNumber.value, { restart: true }));
-bpmNumber.addEventListener("blur", () => applyBpm(bpmNumber.value, { restart: true }));
-patternInput.addEventListener("input", () => { const was = running; if (was) stopReference(); parsePattern(); pauseElapsed = 0; draw(0); });
-document.querySelectorAll(".loop[data-loop]").forEach(button => button.addEventListener("click", () => setLoop(Number(button.dataset.loop))));
-compactToggle.addEventListener("click", toggleCompact);
-metronomeToggle.addEventListener("click", toggleMetronome);
-metronomeSubdivision.addEventListener("change", () => { lastMetronomeBeat = -1; });
-savePatternBtn.addEventListener("click", saveCurrentPattern);
-loadPatternBtn.addEventListener("click", loadSelectedPattern);
-deletePatternBtn.addEventListener("click", deleteSelectedPattern);
-savedSongsSelect.addEventListener("change", () => selectSong(savedSongsSelect.value));
-newSongBtn.addEventListener("click", () => openSongEditor());
-editSongBtn.addEventListener("click", () => { const song = findSong(); if (!song) { window.alert("Select a song to edit."); return; } openSongEditor(song); });
-deleteSongBtn.addEventListener("click", deleteSelectedSong);
-document.querySelectorAll("[data-part]").forEach(button => button.addEventListener("click", () => setSongPart(button.dataset.part)));
-saveAsBassBtn.addEventListener("click", () => saveCurrentPatternAsPart("bass"));
-saveAsTrebleBtn.addEventListener("click", () => saveCurrentPatternAsPart("treble"));
-saveSongBtn.addEventListener("click", saveSongFromEditor);
-cancelSongBtn.addEventListener("click", closeSongEditor);
-cancelSongTopBtn.addEventListener("click", closeSongEditor);
-songModal.addEventListener("click", event => { if (event.target === songModal) closeSongEditor(); });
-fullscreenBtn.addEventListener("click", enterPracticeFullscreen);
-fullscreenStopBtn.addEventListener("click", stopReference);
-fullscreenRestartBtn.addEventListener("click", restartReference);
-exitFullscreenBtn.addEventListener("click", exitPracticeFullscreen);
-document.addEventListener("fullscreenchange", syncFullscreenState);
-window.addEventListener("resize", () => draw(elapsed()));
-window.addEventListener("orientationchange", () => setTimeout(() => draw(elapsed()), 120));
-startBtn.addEventListener("click", startReference);
-stopBtn.addEventListener("click", stopReference);
-restartBtn.addEventListener("click", restartReference);
-renderWordControls();
-refreshSavedPatterns();
-refreshSavedSongs();
-setSongPart(selectedSongPart, { load: false });
-resetReference();
+let appInitialized = false;
+function requiredElements() { return { newSongBtn, editSongBtn, deleteSongBtn, bassPartBtn, treblePartBtn, savedSongsSelect, songModal, saveSongBtn, cancelSongBtn, cancelSongTopBtn, songNameInput, bassPatternInput, treblePatternInput, saveAsBassBtn, saveAsTrebleBtn, patternInput, bpm, bpmNumber, startBtn, stopBtn, restartBtn, fullscreenBtn }; }
+function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); return missing.length === 0; }
+function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
+function initializeApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+  warnMissingElements();
+  bindEvent(bpm, "input", () => applyBpm(bpm.value, { restart: true }), "BPM slider");
+  bindEvent(bpmNumber, "input", () => { bpm.value = String(clampBpm(bpmNumber.value)); draw(pauseElapsed); }, "BPM number input");
+  bindEvent(bpmNumber, "change", () => applyBpm(bpmNumber.value, { restart: true }), "BPM number change");
+  bindEvent(bpmNumber, "blur", () => applyBpm(bpmNumber.value, { restart: true }), "BPM number blur");
+  bindEvent(patternInput, "input", () => { const was = running; if (was) stopReference(); parsePattern(); pauseElapsed = 0; draw(0); }, "pattern input");
+  document.querySelectorAll(".loop[data-loop]").forEach(button => button.addEventListener("click", () => setLoop(Number(button.dataset.loop))));
+  bindEvent(compactToggle, "click", toggleCompact, "compact lane toggle");
+  bindEvent(metronomeToggle, "click", toggleMetronome, "metronome toggle");
+  bindEvent(metronomeSubdivision, "change", () => { lastMetronomeBeat = -1; }, "metronome subdivision");
+  bindEvent(savePatternBtn, "click", saveCurrentPattern, "save pattern");
+  bindEvent(loadPatternBtn, "click", loadSelectedPattern, "load pattern");
+  bindEvent(deletePatternBtn, "click", deleteSelectedPattern, "delete pattern");
+  bindEvent(savedSongsSelect, "change", () => selectSong(savedSongsSelect.value), "saved song dropdown");
+  bindEvent(newSongBtn, "click", () => openSongEditor(), "new song");
+  bindEvent(editSongBtn, "click", () => { const song = findSong(); if (!song) { window.alert("Select a song to edit."); return; } openSongEditor(song); }, "edit song");
+  bindEvent(deleteSongBtn, "click", deleteSelectedSong, "delete song");
+  document.addEventListener("click", event => { const button = event.target.closest && event.target.closest("[data-part]"); if (!button) return; setSongPart(button.dataset.part); });
+  bindEvent(saveAsBassBtn, "click", () => saveCurrentPatternAsPart("bass"), "save current as bass");
+  bindEvent(saveAsTrebleBtn, "click", () => saveCurrentPatternAsPart("treble"), "save current as treble");
+  bindEvent(saveSongBtn, "click", saveSongFromEditor, "save song");
+  bindEvent(cancelSongBtn, "click", closeSongEditor, "cancel song");
+  bindEvent(cancelSongTopBtn, "click", closeSongEditor, "close song editor");
+  bindEvent(songModal, "click", event => { if (event.target === songModal) closeSongEditor(); }, "song modal backdrop");
+  document.addEventListener("keydown", event => { if (event.key === "Escape" && songModal && !songModal.hidden) closeSongEditor(); });
+  bindEvent(fullscreenBtn, "click", enterPracticeFullscreen, "fullscreen");
+  bindEvent(fullscreenStopBtn, "click", stopReference, "fullscreen stop");
+  bindEvent(fullscreenRestartBtn, "click", restartReference, "fullscreen restart");
+  bindEvent(exitFullscreenBtn, "click", exitPracticeFullscreen, "exit fullscreen");
+  document.addEventListener("fullscreenchange", syncFullscreenState);
+  window.addEventListener("resize", () => draw(elapsed()));
+  window.addEventListener("orientationchange", () => setTimeout(() => draw(elapsed()), 120));
+  bindEvent(startBtn, "click", startReference, "start");
+  bindEvent(stopBtn, "click", stopReference, "stop");
+  bindEvent(restartBtn, "click", restartReference, "restart");
+  renderWordControls();
+  refreshSavedPatterns();
+  refreshSavedSongs();
+  setSongPart(selectedSongPart, { load: false });
+  resetReference();
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeApp, { once: true });
+else initializeApp();
