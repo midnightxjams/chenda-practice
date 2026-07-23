@@ -1,15 +1,17 @@
 const THAKAA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKAA_TRAILING_GAP_BEATS = 1.0;
-const TA_PICKUP_GAP_BEATS = 1.0;
+const THAKKA_INTERNAL_PAUSE_BEATS = 0.5;
+const THAKKA_TRAILING_GAP_BEATS = 0.25;
+const THA_PICKUP_GAP_BEATS = 1.0;
 const WORD_DEFINITIONS = {
-  TA: {
+  THA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }],
     durationBeats: 1,
-    colorClass: "word-ta",
+    colorClass: "word-tha",
     color: { fill: "#f2b94b", glow: "rgba(242,185,75,.72)", text: "#090a0e" },
-    pickupGapAfterBeats: TA_PICKUP_GAP_BEATS,
-    pickupTarget: "nextNonTA",
-    description: "One right-hand hit followed by a pause before the next non-TA word."
+    pickupGapAfterBeats: THA_PICKUP_GAP_BEATS,
+    pickupTarget: "nextNonTHA",
+    description: "One right-hand hit followed by a pause before the next non-THA word."
   },
   THAKA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1, accented: false }],
@@ -27,11 +29,12 @@ const WORD_DEFINITIONS = {
     description: "Right, 0.5-beat pause, Left, then 1 full silent beat before the next word."
   },
   THAKKA: {
-    hits: [{ hand: "R", offsetBeats: 0, accented: true }, { hand: "L", offsetBeats: 1, accented: false }],
-    durationBeats: 2,
+    hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1 + THAKKA_INTERNAL_PAUSE_BEATS, accented: false }],
+    trailingGapBeats: THAKKA_TRAILING_GAP_BEATS,
+    durationBeats: 2 + THAKKA_INTERNAL_PAUSE_BEATS,
     colorClass: "word-thakka",
     color: { fill: "#e95a45", glow: "rgba(233,90,69,.78)", text: "#fff8ec" },
-    description: "Hard accented Right hit followed by Left."
+    description: "Right, slight pause, Left, then a short gap before the next word."
   },
   THAKITA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "R", offsetBeats: 1, accented: false }, { hand: "L", offsetBeats: 2, accented: false }],
@@ -42,7 +45,8 @@ const WORD_DEFINITIONS = {
   }
 };
 const WORD_ORDER = Object.keys(WORD_DEFINITIONS).sort((a, b) => b.length - a.length || a.localeCompare(b));
-const DISPLAY_WORD_ORDER = ["TA", "THAKA", "THAKAA", "THAKKA", "THAKITA"];
+const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA"];
+const LEGACY_WORD_ALIASES = { TA: "THA" };
 const $ = id => document.getElementById(id);
 const app = $("app"), canvas = $("lane"), ctx = canvas.getContext("2d"), patternInput = $("patternInput"), warning = $("warning"), bpm = $("bpm"), bpmNumber = $("bpmNumber"), startBtn = $("start"), stopBtn = $("stop"), restartBtn = $("restart"), metronomeToggle = $("metronomeToggle"), metronomeVolume = $("metronomeVolume"), metronomeSubdivision = $("metronomeSubdivision"), fullscreenBtn = $("fullscreen"), fullscreenStopBtn = $("fullscreenStop"), fullscreenRestartBtn = $("fullscreenRestart"), exitFullscreenBtn = $("exitFullscreen"), savePatternBtn = $("savePattern"), loadPatternBtn = $("loadPattern"), deletePatternBtn = $("deletePattern"), savedPatternsSelect = $("savedPatterns"), compactToggle = $("compactToggle"), stateEl = $("state"), wordCountEl = $("wordCount"), hitCountEl = $("hitCount"), nowWordEl = $("nowWord"), playTimerEl = $("playTimer"), insertButtonsEl = $("insertButtons"), wordDefinitionListEl = $("wordDefinitionList");
 let baseWords = [], words = [], hits = [], groups = [], loopEndBeats = [], running = false, startTime = 0, pauseElapsed = 0, raf = 0, loopCount = 4, builtLoopCount = 0, totalBeats = 0, completedLoops = 0, compactLanes = true, metronomeOn = false, lastMetronomeBeat = -1, audioContext = null;
@@ -50,11 +54,13 @@ const countInBeats = 4, prepGapBeats = 4, hitFadeBeats = .34;
 const patternLibraryKey = "chendaPracticePatterns";
 function wordDef(word) { return WORD_DEFINITIONS[word]; }
 function supportedWords() { return DISPLAY_WORD_ORDER.filter(word => wordDef(word)); }
+function normalizeWordToken(word) { return LEGACY_WORD_ALIASES[word] || word; }
+function normalizePatternText(text) { return (text.toUpperCase().match(/[A-Z]+/g) || []).map(normalizeWordToken).join(" "); }
 function readPatternLibrary() { try { const raw = localStorage.getItem(patternLibraryKey); const parsed = raw ? JSON.parse(raw) : {}; return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch (error) { return {}; } }
 function writePatternLibrary(library) { localStorage.setItem(patternLibraryKey, JSON.stringify(library)); }
 function refreshSavedPatterns(selectedName = "") { const library = readPatternLibrary(); const names = Object.keys(library).sort((a, b) => a.localeCompare(b)); savedPatternsSelect.innerHTML = ""; const empty = document.createElement("option"); empty.value = ""; empty.textContent = names.length ? "Choose a saved pattern" : "No saved patterns"; savedPatternsSelect.appendChild(empty); names.forEach(name => { const option = document.createElement("option"); option.value = name; option.textContent = name; savedPatternsSelect.appendChild(option); }); if (selectedName && library[selectedName]) savedPatternsSelect.value = selectedName; }
 function saveCurrentPattern() { const current = patternInput.value.trim(); if (!current) { window.alert("Enter a pattern before saving."); return; } const name = (window.prompt("Pattern name", savedPatternsSelect.value || "") || "").trim(); if (!name) return; const library = readPatternLibrary(); library[name] = patternInput.value; writePatternLibrary(library); refreshSavedPatterns(name); }
-function loadSelectedPattern() { const name = savedPatternsSelect.value; if (!name) return; const library = readPatternLibrary(); if (!library[name]) return; const was = running; if (was) stopReference(); patternInput.value = library[name]; parsePattern(); pauseElapsed = 0; draw(0); }
+function loadSelectedPattern() { const name = savedPatternsSelect.value; if (!name) return; const library = readPatternLibrary(); if (!library[name]) return; const was = running; if (was) stopReference(); patternInput.value = normalizePatternText(library[name]); parsePattern(); pauseElapsed = 0; draw(0); }
 function deleteSelectedPattern() { const name = savedPatternsSelect.value; if (!name) return; const library = readPatternLibrary(); if (!library[name]) return; if (!window.confirm("Delete saved pattern: " + name + "?")) return; delete library[name]; writePatternLibrary(library); refreshSavedPatterns(); }
 function ensureAudioContext() { const AudioCtor = window.AudioContext || window.webkitAudioContext; if (!AudioCtor) return null; if (!audioContext) audioContext = new AudioCtor(); if (audioContext.state === "suspended") audioContext.resume(); return audioContext; }
 function playMetronomeClick(strong = false) { if (!metronomeOn) return; const context = ensureAudioContext(); if (!context) return; const now = context.currentTime; const volume = Math.max(0, Math.min(1, Number(metronomeVolume.value) || 0)); const gain = context.createGain(); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime((strong ? .12 : .075) * volume, now + .004); gain.gain.exponentialRampToValueAtTime(0.0001, now + (strong ? .075 : .055)); gain.connect(context.destination); const osc = context.createOscillator(); osc.type = strong ? "triangle" : "sine"; osc.frequency.setValueAtTime(strong ? 520 : 920, now); osc.frequency.exponentialRampToValueAtTime(strong ? 360 : 760, now + .045); osc.connect(gain); osc.start(now); osc.stop(now + .08); }
@@ -68,8 +74,8 @@ function isInfiniteLoop() { return loopCount === Infinity; }
 function loopDisplay() { return isInfiniteLoop() ? "\u221e" : "x" + loopCount; }
 function formatTime(ms) { const total = Math.max(0, Math.floor(ms / 1000)); const minutes = String(Math.floor(total / 60)).padStart(2, "0"); const seconds = String(total % 60).padStart(2, "0"); return minutes + ":" + seconds; }
 function updatePlayTimer(now) { if (playTimerEl) playTimerEl.textContent = formatTime(now); }
-function parsePattern() { const raw = patternInput.value.toUpperCase().match(/[A-Z]+/g) || []; const bad = []; baseWords = []; raw.forEach(word => wordDef(word) ? baseWords.push(word) : bad.push(word)); if (!baseWords.length) baseWords = ["TA"]; warning.textContent = bad.length ? "Ignored: " + [...new Set(bad)].join(", ") : ""; buildTimeline(); completedLoops = 0; updateInfo(0); updatePlayTimer(pauseElapsed); }
-function shouldAddPickupGapAt(sourceIndex) { const word = baseWords[sourceIndex]; const def = wordDef(word); if (!def || !def.pickupGapAfterBeats || sourceIndex >= baseWords.length - 1) return 0; const nextWord = baseWords[sourceIndex + 1]; if (def.pickupTarget === "nextNonTA" && nextWord !== "TA") return def.pickupGapAfterBeats; return 0; }
+function parsePattern() { const raw = patternInput.value.toUpperCase().match(/[A-Z]+/g) || []; const bad = []; baseWords = []; raw.forEach(token => { const word = normalizeWordToken(token); wordDef(word) ? baseWords.push(word) : bad.push(token); }); if (!baseWords.length) baseWords = ["THA"]; warning.textContent = bad.length ? "Ignored: " + [...new Set(bad)].join(", ") : ""; buildTimeline(); completedLoops = 0; updateInfo(0); updatePlayTimer(pauseElapsed); }
+function shouldAddPickupGapAt(sourceIndex) { const word = baseWords[sourceIndex]; const def = wordDef(word); if (!def || !def.pickupGapAfterBeats || sourceIndex >= baseWords.length - 1) return 0; const nextWord = baseWords[sourceIndex + 1]; if (def.pickupTarget === "nextNonTHA" && nextWord !== "THA") return def.pickupGapAfterBeats; return 0; }
 function appendPatternLoop() { const loopNumber = builtLoopCount; baseWords.forEach((word, sourceIndex) => { const def = wordDef(word); const index = words.length; const startBeat = totalBeats; const lastHitOffset = Math.max(...def.hits.map(hit => hit.offsetBeats)); const hasNextWord = sourceIndex < baseWords.length - 1; words.push(word); def.hits.forEach((part, offsetIndex) => { hits.push({ hand: part.hand, accent: !!part.accented, word, wordIndex: index, part: offsetIndex, timeBeat: startBeat + part.offsetBeats, loopNumber: loopNumber + 1 }); }); groups.push({ word, index, startBeat, endBeat: startBeat + lastHitOffset, centerBeat: startBeat + lastHitOffset / 2, loopNumber: loopNumber + 1 }); totalBeats += def.durationBeats; if (hasNextWord && def.trailingGapBeats) totalBeats += def.trailingGapBeats; totalBeats += shouldAddPickupGapAt(sourceIndex); }); loopEndBeats.push(totalBeats); builtLoopCount++; }
 function buildTimeline() { hits = []; groups = []; words = []; loopEndBeats = []; builtLoopCount = 0; totalBeats = countInBeats + prepGapBeats; const loopsToBuild = isInfiniteLoop() ? 8 : loopCount; for (let i = 0; i < loopsToBuild; i++) appendPatternLoop(); }
 function ensureInfiniteTimeline(nowBeat) { if (!isInfiniteLoop()) return; while (totalBeats - nowBeat < 32) appendPatternLoop(); }
@@ -90,7 +96,7 @@ function drawCountIn(nowBeat, w, h, hitY, visualScale = 1) { if (nowBeat >= coun
 function drawLane(x, laneW, label, color, visualScale = 1) { ctx.fillStyle = "rgba(255,255,255,.055)"; ctx.fillRect(x - laneW / 2, 0, laneW, canvas.height); ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = visualScale > 1 ? 3 : 2; ctx.strokeRect(x - laneW / 2, 0, laneW, canvas.height); ctx.fillStyle = color; ctx.font = "900 " + Math.round(20 * visualScale) + "px Inter, system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(label, x, visualScale > 1 ? 24 : 18); ctx.fillStyle = "rgba(255,255,255,.045)"; const step = visualScale > 1 ? 52 : 40; for (let y = visualScale > 1 ? 92 : 74; y < canvas.height; y += step) ctx.fillRect(x - laneW / 2, y, laneW, 1); }
 function drawDivider(leftX, rightX, visualScale = 1) { const x = (leftX + rightX) / 2; ctx.save(); ctx.strokeStyle = "rgba(255,248,236,.38)"; ctx.lineWidth = visualScale > 1 ? 2 : 1; ctx.setLineDash(visualScale > 1 ? [12, 10] : [8, 8]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); }
 function laneXForHand(hand, leftX, rightX) { return hand === "R" ? rightX : leftX; }
-function drawNote(x, y, hit, delta = -1, visualScale = 1) { const def = wordDef(hit.word) || wordDef("TA"); const palette = def.color; const hitting = delta >= 0; const progress = hitting ? Math.min(1, delta / hitFadeBeats) : 0; const hitScale = hitting ? 1.08 - progress * .08 : 1; const alpha = hitting ? 1 - progress : .98; const full = visualScale > 1; ctx.save(); ctx.translate(x, y); ctx.scale(hitScale, hitScale); ctx.globalAlpha = alpha; ctx.shadowBlur = hitting ? (full ? 42 : 30) - progress * (full ? 18 : 12) : (full ? 34 : 22); ctx.shadowColor = palette.glow; ctx.fillStyle = palette.fill; const noteW = full ? Math.max(118, Math.min(164, canvas.width * .17)) : Math.max(72, Math.min(104, canvas.width * .14)); const noteH = full ? Math.max(78, Math.min(96, canvas.height * .13)) : Math.max(50, Math.min(60, canvas.height * .11)); const radius = full ? 14 : 10; roundRect(-noteW / 2, -noteH / 2, noteW, noteH, radius); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = hitting ? "#fff8ec" : "rgba(255,248,236,.86)"; ctx.lineWidth = hit.accent ? (full ? 6 : 4) : (full ? 4 : 3); roundRect(-noteW / 2, -noteH / 2, noteW, noteH, radius); ctx.stroke(); ctx.fillStyle = palette.text; ctx.font = "950 " + (full ? 50 : 34) + "px Inter, system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(hit.hand, 0, full ? -4 : -2); ctx.fillStyle = hit.word === "THAKKA" ? "rgba(255,248,236,.86)" : "rgba(9,10,14,.72)"; ctx.font = "850 " + (full ? 14 : 10) + "px Inter, system-ui"; ctx.fillText(hit.word, 0, noteH * .34); ctx.fillStyle = "rgba(255,248,236,.98)"; ctx.strokeStyle = "rgba(9,10,14,.42)"; ctx.lineWidth = full ? 2 : 1; ctx.beginPath(); ctx.arc(0, 0, full ? 8 : 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore(); }
+function drawNote(x, y, hit, delta = -1, visualScale = 1) { const def = wordDef(hit.word) || wordDef("THA"); const palette = def.color; const hitting = delta >= 0; const progress = hitting ? Math.min(1, delta / hitFadeBeats) : 0; const hitScale = hitting ? 1.08 - progress * .08 : 1; const alpha = hitting ? 1 - progress : .98; const full = visualScale > 1; ctx.save(); ctx.translate(x, y); ctx.scale(hitScale, hitScale); ctx.globalAlpha = alpha; ctx.shadowBlur = hitting ? (full ? 42 : 30) - progress * (full ? 18 : 12) : (full ? 34 : 22); ctx.shadowColor = palette.glow; ctx.fillStyle = palette.fill; const noteW = full ? Math.max(118, Math.min(164, canvas.width * .17)) : Math.max(72, Math.min(104, canvas.width * .14)); const noteH = full ? Math.max(78, Math.min(96, canvas.height * .13)) : Math.max(50, Math.min(60, canvas.height * .11)); const radius = full ? 14 : 10; roundRect(-noteW / 2, -noteH / 2, noteW, noteH, radius); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = hitting ? "#fff8ec" : "rgba(255,248,236,.86)"; ctx.lineWidth = hit.accent ? (full ? 6 : 4) : (full ? 4 : 3); roundRect(-noteW / 2, -noteH / 2, noteW, noteH, radius); ctx.stroke(); ctx.fillStyle = palette.text; ctx.font = "950 " + (full ? 50 : 34) + "px Inter, system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(hit.hand, 0, full ? -4 : -2); ctx.fillStyle = hit.word === "THAKKA" ? "rgba(255,248,236,.86)" : "rgba(9,10,14,.72)"; ctx.font = "850 " + (full ? 14 : 10) + "px Inter, system-ui"; ctx.fillText(hit.word, 0, noteH * .34); ctx.fillStyle = "rgba(255,248,236,.98)"; ctx.strokeStyle = "rgba(9,10,14,.42)"; ctx.lineWidth = full ? 2 : 1; ctx.beginPath(); ctx.arc(0, 0, full ? 8 : 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore(); }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function setLoop(value) { loopCount = value; document.querySelectorAll(".loop[data-loop]").forEach(button => button.classList.toggle("active", Number(button.dataset.loop) === loopCount)); const was = running; if (was) stopReference(); parsePattern(); pauseElapsed = 0; draw(0); if (was) startReference(); }
 function insertWord(word) { const start = patternInput.selectionStart ?? patternInput.value.length; const end = patternInput.selectionEnd ?? start; const before = patternInput.value.slice(0, start); const after = patternInput.value.slice(end); const prefix = before && !/\s$/.test(before) ? " " : ""; const insert = prefix + word + " "; patternInput.value = before + insert + after; const pos = (before + insert).length; patternInput.setSelectionRange(pos, pos); const was = running; if (was) stopReference(); parsePattern(); pauseElapsed = 0; draw(0); }
