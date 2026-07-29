@@ -52,6 +52,7 @@ const REST_DEFINITIONS = {
   REST4: { durationBeats: 4, description: "Four silent beats" }
 };
 
+const DEFAULT_SECTION_COUNT = 4;
 const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA"];
 const DISPLAY_REST_ORDER = ["REST1", "REST2", "REST4"];
 const LEGACY_WORD_ALIASES = { TA: "THA" };
@@ -63,7 +64,12 @@ const hitFadeBeats = 0.34;
 const defaultSong = {
   id: "",
   name: "Unsaved practice song",
-  sections: [{ id: "section-draft-1", name: "", treblePattern: "THAKITA THAKITA THAKKA THA THAKA", bassPattern: "THA THAKA REST2 THAKKA THAKA" }],
+  sections: [
+    { id: "section-draft-1", name: "", treblePattern: "THAKITA THAKA\nTHAKKA THAKA", bassPattern: "THA THAKA REST1\nTHAKKA THAKA" },
+    { id: "section-draft-2", name: "", treblePattern: "", bassPattern: "" },
+    { id: "section-draft-3", name: "", treblePattern: "", bassPattern: "" },
+    { id: "section-draft-4", name: "", treblePattern: "", bassPattern: "" }
+  ],
   lastPart: "treble"
 };
 
@@ -126,6 +132,8 @@ let totalBeats = 0;
 let completedLoops = 0;
 let loopEndBeats = [];
 let sectionBoundaries = [];
+let lineBoundaries = [];
+let lastActiveLineKey = "";
 let metronomeOn = false;
 let lastMetronomeBeat = -1;
 let audioContext = null;
@@ -140,8 +148,11 @@ function supportedWords() { return DISPLAY_WORD_ORDER.filter(word => wordDef(wor
 function supportedRests() { return DISPLAY_REST_ORDER.filter(rest => restDef(rest)); }
 function normalizeToken(token) { return LEGACY_WORD_ALIASES[token] || token; }
 function tokenize(text) { return (String(text || "").toUpperCase().match(/[A-Z0-9]+/g) || []).map(normalizeToken); }
-function normalizePatternText(text) { return tokenize(text).filter(token => tokenDef(token)).join(" "); }
+function splitPatternLines(text) { return String(text || "").replace(/\r\n?/g, "\n").split("\n"); }
+function normalizePatternText(text) { return splitPatternLines(text).map(line => tokenize(line).filter(token => tokenDef(token)).join(" ")).join("\n"); }
 function invalidPatternTokens(text) { return [...new Set(tokenize(text).filter(token => !tokenDef(token)))]; }
+function lineTokens(pattern, lineIndex) { return tokenize(splitPatternLines(pattern)[lineIndex] || "").filter(token => tokenDef(token)); }
+function patternLineCount(section) { return Math.max(1, splitPatternLines(section.treblePattern).length, splitPatternLines(section.bassPattern).length); }
 function partLabel(part) { return part === "bass" ? "Bass" : "Treble"; }
 function patternKey(part) { return part === "bass" ? "bassPattern" : "treblePattern"; }
 function makeSection(seed = {}) {
@@ -152,6 +163,7 @@ function makeSection(seed = {}) {
     bassPattern: normalizePatternText(seed.bassPattern || "")
   };
 }
+function createDefaultSections() { return Array.from({ length: DEFAULT_SECTION_COUNT }, (_, index) => makeSection({ name: "", treblePattern: "", bassPattern: "", id: "section-" + Date.now() + "-" + index + "-" + Math.random().toString(36).slice(2, 8) })); }
 function normalizeSong(song) {
   const id = song && song.id ? String(song.id) : "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
   const oldParts = song && song.parts && typeof song.parts === "object" ? song.parts : null;
@@ -223,12 +235,21 @@ function isInfiniteLoop() { return loopCount === Infinity; }
 function loopDisplay() { return isInfiniteLoop() ? "\u221e" : "x" + loopCount; }
 function beatsText(value) { const text = Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); return text + " " + (Math.abs(value - 1) < .001 ? "beat" : "beats"); }
 
-function sectionDuration(pattern) { return measureTokens(tokenize(pattern).filter(token => tokenDef(token))); }
-function measureTokens(tokens) {
+function firstTokenAfterLine(pattern, lineIndex) {
+  const lines = splitPatternLines(pattern);
+  for (let index = lineIndex; index < lines.length; index++) {
+    const token = lineTokens(pattern, index)[0];
+    if (token) return token;
+  }
+  return "";
+}
+function patternDuration(pattern) { const lines = splitPatternLines(pattern); return lines.reduce((sum, line, index) => sum + measureTokens(tokenize(line).filter(token => tokenDef(token)), firstTokenAfterLine(pattern, index + 1)), 0); }
+function sectionDuration(pattern) { return patternDuration(pattern); }
+function measureTokens(tokens, nextLineFirstToken = "") {
   let beat = 0;
   tokens.forEach((token, index) => {
     const def = tokenDef(token);
-    const next = tokens[index + 1];
+    const next = tokens[index + 1] || (index === tokens.length - 1 ? nextLineFirstToken : "");
     if (!def) return;
     if (restDef(token)) { beat += def.durationBeats; return; }
     beat += def.durationBeats;
@@ -237,14 +258,25 @@ function measureTokens(tokens) {
   });
   return beat;
 }
-function sectionAlignment(section) {
-  const treble = sectionDuration(section.treblePattern);
-  const bass = sectionDuration(section.bassPattern);
+function lineAlignment(section, lineIndex) {
+  const treble = measureTokens(lineTokens(section.treblePattern, lineIndex), firstTokenAfterLine(section.treblePattern, lineIndex + 1));
+  const bass = measureTokens(lineTokens(section.bassPattern, lineIndex), firstTokenAfterLine(section.bassPattern, lineIndex + 1));
   const duration = Math.max(treble, bass);
   const diff = Math.abs(treble - bass);
-  if (diff < .001) return { treble, bass, duration, aligned: true, text: "Aligned: " + beatsText(duration) };
+  if (diff < .001) return { line: lineIndex + 1, treble, bass, duration, aligned: true, text: "Line " + (lineIndex + 1) + " aligned: " + beatsText(duration) };
   const shorter = treble > bass ? "Bass" : "Treble";
-  return { treble, bass, duration, aligned: false, shorter: shorter.toLowerCase(), text: shorter + " rests for remaining " + beatsText(diff) };
+  return { line: lineIndex + 1, treble, bass, duration, aligned: false, shorter: shorter.toLowerCase(), text: "Line " + (lineIndex + 1) + ": " + shorter + " short by " + beatsText(diff) };
+}
+function sectionLineAlignments(section) { return Array.from({ length: patternLineCount(section) }, (_, index) => lineAlignment(section, index)); }
+function sectionAlignment(section) {
+  const lines = sectionLineAlignments(section);
+  const treble = lines.reduce((sum, line) => sum + line.treble, 0);
+  const bass = lines.reduce((sum, line) => sum + line.bass, 0);
+  const duration = lines.reduce((sum, line) => sum + line.duration, 0);
+  const diff = Math.abs(treble - bass);
+  if (lines.every(line => line.aligned)) return { treble, bass, duration, aligned: true, text: "Aligned: " + beatsText(duration), lines };
+  const shorter = treble > bass ? "Bass" : "Treble";
+  return { treble, bass, duration, aligned: false, shorter: shorter.toLowerCase(), text: shorter + " rests for remaining " + beatsText(diff), lines };
 }
 function restPaddingForBeats(beats) {
   const rounded = Math.round(beats);
@@ -261,6 +293,7 @@ function appendTokens(text, tokens) { const clean = normalizePatternText(text); 
 function buildTimeline() {
   PARTS.forEach(part => { canvases[part].hits = []; canvases[part].groups = []; });
   sectionBoundaries = [];
+  lineBoundaries = [];
   loopEndBeats = [];
   builtLoopCount = 0;
   completedLoops = 0;
@@ -272,32 +305,39 @@ function appendSongLoop() {
   const loopNumber = builtLoopCount + 1;
   currentSong.sections.forEach((section, sectionIndex) => {
     const sectionStart = totalBeats;
-    const durations = {};
-    PARTS.forEach(part => { durations[part] = schedulePart(section, part, sectionStart, loopNumber, sectionIndex + 1); });
-    const sectionDurationBeats = Math.max(durations.treble, durations.bass);
-    sectionBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", startBeat: sectionStart, endBeat: sectionStart + sectionDurationBeats });
-    totalBeats = sectionStart + sectionDurationBeats;
+    const lineCount = patternLineCount(section);
+    let lineStart = sectionStart;
+    for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+      const trebleDuration = schedulePartLine(section, "treble", lineIndex, lineStart, loopNumber, sectionIndex + 1);
+      const bassDuration = schedulePartLine(section, "bass", lineIndex, lineStart, loopNumber, sectionIndex + 1);
+      const lineDuration = Math.max(trebleDuration, bassDuration);
+      lineBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", lineNumber: lineIndex + 1, startBeat: lineStart, endBeat: lineStart + lineDuration });
+      lineStart += lineDuration;
+    }
+    sectionBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", startBeat: sectionStart, endBeat: lineStart });
+    totalBeats = lineStart;
   });
   loopEndBeats.push(totalBeats);
   builtLoopCount++;
 }
-function schedulePart(section, part, sectionStart, loopNumber, sectionNumber) {
-  const tokens = tokenize(section[patternKey(part)]).filter(token => tokenDef(token));
-  let beat = sectionStart;
+function schedulePartLine(section, part, lineIndex, lineStart, loopNumber, sectionNumber) {
+  const tokens = lineTokens(section[patternKey(part)], lineIndex);
+  const nextLineFirstToken = firstTokenAfterLine(section[patternKey(part)], lineIndex + 1);
+  let beat = lineStart;
   tokens.forEach((token, index) => {
     const def = tokenDef(token);
-    const next = tokens[index + 1];
+    const next = tokens[index + 1] || (index === tokens.length - 1 ? nextLineFirstToken : "");
     if (restDef(token)) { beat += def.durationBeats; return; }
     const lastHitOffset = Math.max(...def.hits.map(hit => hit.offsetBeats));
     def.hits.forEach((hit, hitIndex) => {
-      canvases[part].hits.push({ hand: hit.hand, accent: !!hit.accented, word: token, part, hitIndex, timeBeat: beat + hit.offsetBeats, loopNumber, sectionNumber });
+      canvases[part].hits.push({ hand: hit.hand, accent: !!hit.accented, word: token, part, hitIndex, timeBeat: beat + hit.offsetBeats, loopNumber, sectionNumber, lineNumber: lineIndex + 1 });
     });
-    canvases[part].groups.push({ word: token, startBeat: beat, endBeat: beat + lastHitOffset, centerBeat: beat + lastHitOffset / 2, loopNumber, sectionNumber });
+    canvases[part].groups.push({ word: token, startBeat: beat, endBeat: beat + lastHitOffset, centerBeat: beat + lastHitOffset / 2, loopNumber, sectionNumber, lineNumber: lineIndex + 1 });
     beat += def.durationBeats;
     if (next && wordDef(next) && def.trailingGapBeats) beat += def.trailingGapBeats;
     if (next && wordDef(next) && def.pickupGapAfterBeats && def.pickupTarget === "nextNonTHA" && next !== "THA") beat += def.pickupGapAfterBeats;
   });
-  return beat - sectionStart;
+  return beat - lineStart;
 }
 function ensureInfiniteTimeline(nowBeat) { if (!isInfiniteLoop()) return; while (totalBeats - nowBeat < 32) appendSongLoop(); }
 function updateLoopCompletion(nowBeat) { while (completedLoops < loopEndBeats.length && nowBeat >= loopEndBeats[completedLoops]) completedLoops++; }
@@ -305,15 +345,37 @@ function currentSection(nowBeat) {
   if (!sectionBoundaries.length) return null;
   return sectionBoundaries.find(section => nowBeat >= section.startBeat && nowBeat < section.endBeat) || (nowBeat < countInBeats + prepGapBeats ? sectionBoundaries[0] : sectionBoundaries[sectionBoundaries.length - 1]);
 }
+function currentLine(nowBeat) {
+  if (!lineBoundaries.length) return null;
+  return lineBoundaries.find(line => nowBeat >= line.startBeat && nowBeat < line.endBeat) || (nowBeat < countInBeats + prepGapBeats ? lineBoundaries[0] : lineBoundaries[lineBoundaries.length - 1]);
+}
 function updateStatus(nowBeat) {
   const section = currentSection(nowBeat);
-  sectionIndicatorEl.textContent = section ? "Section " + section.sectionNumber + " of " + currentSong.sections.length : "Section -";
+  const line = currentLine(nowBeat);
+  sectionIndicatorEl.textContent = section ? "Section " + section.sectionNumber + " of " + currentSong.sections.length + (line ? "   Line " + line.lineNumber : "") : "Section -";
   const currentLoop = isInfiniteLoop() ? completedLoops + 1 : Math.min(loopCount, completedLoops + 1);
   loopStatusEl.textContent = "Loop: " + currentLoop + " / " + (isInfiniteLoop() ? "\u221e" : loopCount) + "   Completed: " + completedLoops;
+  highlightActiveLine(line);
   PARTS.forEach(part => {
     const next = canvases[part].hits.find(hit => hit.timeBeat >= nowBeat - .05);
     const active = canvases[part].groups.find(group => nowBeat >= group.startBeat - .22 && nowBeat <= group.endBeat + .22);
     canvases[part].nowEl.textContent = nowBeat < countInBeats ? String(Math.min(4, Math.floor(nowBeat) + 1)) : nowBeat < countInBeats + prepGapBeats ? "Ready" : active ? active.word : next ? "Next " + next.word : "-";
+  });
+}
+function highlightActiveLine(line) {
+  document.querySelectorAll(".lineRow.activeLine").forEach(row => row.classList.remove("activeLine"));
+  if (!line || !running) { lastActiveLineKey = ""; return; }
+  const activeKey = line.loopNumber + ":" + line.sectionNumber + ":" + line.lineNumber;
+  const shouldReveal = activeKey !== lastActiveLineKey;
+  lastActiveLineKey = activeKey;
+  PARTS.forEach(part => {
+    const row = document.querySelector(".lineRow[data-part='" + part + "'][data-section-index='" + (line.sectionNumber - 1) + "'][data-line-index='" + (line.lineNumber - 1) + "']");
+    if (row) {
+      row.classList.add("activeLine");
+      if (shouldReveal) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const details = row.closest("details.sectionCard");
+      if (details) details.open = true;
+    }
   });
 }
 
@@ -517,41 +579,103 @@ function renderWorkspace() {
 function renderPartEditors(part, container) {
   container.innerHTML = "";
   currentSong.sections.forEach((section, index) => {
-    const card = document.createElement("section");
+    const card = document.createElement("details");
     card.className = "sectionCard";
+    card.open = index === 0;
     card.dataset.sectionIndex = String(index);
     card.dataset.partCard = part;
-    const head = document.createElement("div");
+    const head = document.createElement("summary");
     head.className = "sectionCardHead";
     const title = document.createElement("div");
     title.className = "sectionName";
-    title.textContent = "Section " + (index + 1) + (section.name ? " · " + section.name : "");
+    title.textContent = "Section " + (index + 1) + (section.name ? " - " + section.name : "");
     const metric = document.createElement("div");
     metric.className = "sectionMetric";
     metric.dataset.metricFor = String(index);
+    metric.dataset.metricPart = part;
     const pad = document.createElement("button");
     pad.type = "button";
     pad.className = "ghost padSection";
     pad.dataset.padSection = String(index);
     pad.textContent = "Pad Shorter Part";
-    head.append(title, metric, pad);
+    const preview = document.createElement("div");
+    preview.className = "sectionPreview";
+    preview.textContent = patternPreview(section[patternKey(part)]);
+    head.append(title, metric, preview, pad);
+    const editorShell = document.createElement("div");
+    editorShell.className = "codeEditor";
+    const numbers = document.createElement("pre");
+    numbers.className = "lineNumbers";
     const textarea = document.createElement("textarea");
     textarea.spellcheck = false;
     textarea.value = section[patternKey(part)] || "";
     textarea.dataset.part = part;
     textarea.dataset.sectionIndex = String(index);
     textarea.setAttribute("aria-label", partLabel(part) + " section " + (index + 1) + " pattern");
-    card.append(head, textarea);
+    numbers.textContent = lineNumberText(textarea.value);
+    editorShell.append(numbers, textarea);
+    const restButtons = document.createElement("div");
+    restButtons.className = "localRestButtons";
+    supportedRests().forEach(rest => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost";
+      button.dataset.insertToken = rest;
+      button.textContent = "Rest " + REST_DEFINITIONS[rest].durationBeats;
+      restButtons.appendChild(button);
+    });
+    const lineAnalysis = document.createElement("div");
+    lineAnalysis.className = "lineAnalysis";
+    lineAnalysis.dataset.lineAnalysisFor = String(index);
+    lineAnalysis.dataset.lineAnalysisPart = part;
+    card.append(head, editorShell, restButtons, lineAnalysis);
     container.appendChild(card);
+  });
+}
+function patternPreview(pattern) {
+  const first = splitPatternLines(pattern).map(line => line.trim()).find(Boolean);
+  return first ? first.slice(0, 72) : "Empty section";
+}
+function lineNumberText(text) { return Array.from({ length: Math.max(1, splitPatternLines(text).length) }, (_, index) => String(index + 1)).join("\n"); }
+function syncLineNumbers(textarea) {
+  const editor = textarea.closest(".codeEditor");
+  const numbers = editor && editor.querySelector(".lineNumbers");
+  if (numbers) {
+    numbers.textContent = lineNumberText(textarea.value);
+    numbers.scrollTop = textarea.scrollTop;
+  }
+}
+function renderLineAnalysis(section, sectionIndex, part) {
+  const container = document.querySelector("[data-line-analysis-for='" + sectionIndex + "'][data-line-analysis-part='" + part + "']");
+  if (!container) return;
+  container.innerHTML = "";
+  sectionLineAlignments(section).forEach(info => {
+    const row = document.createElement("div");
+    row.className = "lineRow";
+    row.dataset.part = part;
+    row.dataset.sectionIndex = String(sectionIndex);
+    row.dataset.lineIndex = String(info.line - 1);
+    const text = document.createElement("span");
+    text.textContent = info.aligned ? info.text : "Line " + info.line + " - Treble: " + beatsText(info.treble) + " - Bass: " + beatsText(info.bass) + " - " + (info.shorter === "bass" ? "Bass" : "Treble") + " short by " + beatsText(Math.abs(info.treble - info.bass));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost padLine";
+    button.dataset.padSection = String(sectionIndex);
+    button.dataset.padLine = String(info.line - 1);
+    button.textContent = "Pad Shorter Line";
+    button.hidden = info.aligned;
+    row.append(text, button);
+    container.appendChild(row);
   });
 }
 function updateAllMetrics() {
   currentSong.sections.forEach((section, index) => {
     const info = sectionAlignment(section);
     document.querySelectorAll("[data-metric-for='" + index + "']").forEach(metric => {
-      metric.textContent = "Treble: " + beatsText(info.treble) + " · Bass: " + beatsText(info.bass) + " · " + info.text;
+      metric.textContent = "Treble: " + beatsText(info.treble) + " - Bass: " + beatsText(info.bass) + " - " + info.text;
     });
     document.querySelectorAll("[data-pad-section='" + index + "']").forEach(button => { button.hidden = info.aligned; });
+    PARTS.forEach(part => renderLineAnalysis(section, index, part));
   });
 }
 function setActiveEditor(textarea) {
@@ -566,11 +690,27 @@ function updatePatternFromEditor(textarea) {
   const index = Number(textarea.dataset.sectionIndex);
   const part = textarea.dataset.part === "bass" ? "bass" : "treble";
   if (!currentSong.sections[index]) return;
+  syncLineNumbers(textarea);
   currentSong.sections[index][patternKey(part)] = textarea.value;
   saveCurrentSongIfPersisted();
   buildTimeline();
   updateAllMetrics();
   draw(pauseElapsed);
+}
+function padLine(sectionIndex, lineIndex) {
+  const section = currentSong.sections[sectionIndex];
+  if (!section) return;
+  const info = lineAlignment(section, lineIndex);
+  if (info.aligned) return;
+  const padding = restPaddingForBeats(Math.abs(info.treble - info.bass));
+  if (!padding) { window.alert("This line is short by " + beatsText(Math.abs(info.treble - info.bass)) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
+  const key = info.treble > info.bass ? "bassPattern" : "treblePattern";
+  const lines = splitPatternLines(section[key]);
+  while (lines.length <= lineIndex) lines.push("");
+  lines[lineIndex] = appendTokens(lines[lineIndex], padding);
+  section[key] = lines.join("\n");
+  saveCurrentSongIfPersisted();
+  renderWorkspace();
 }
 function insertToken(token) {
   if (!activeEditor) activeEditor = document.querySelector("textarea[data-part='treble']");
@@ -654,7 +794,7 @@ function hitLegend(def) {
 }
 
 function openSongEditor(song = null) {
-  editorSong = song ? normalizeSong(song) : { id: "", name: "", sections: [makeSection()], lastPart: "treble" };
+  editorSong = song ? normalizeSong(song) : { id: "", name: "", sections: createDefaultSections(), lastPart: "treble" };
   songModalTitle.textContent = song ? "Edit Song" : "New Song";
   songNameInput.value = editorSong.name;
   renderModalSections();
@@ -849,7 +989,15 @@ function initializeApp() {
   document.addEventListener("keyup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("mouseup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) { setActiveEditor(event.target); updatePatternFromEditor(event.target); } });
-  document.addEventListener("click", event => { const padButton = event.target.closest("[data-pad-section]"); if (padButton) padSection(Number(padButton.dataset.padSection)); });
+  document.addEventListener("scroll", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) syncLineNumbers(event.target); }, true);
+  document.addEventListener("click", event => {
+    const tokenButton = event.target.closest("[data-insert-token]");
+    if (tokenButton && !insertButtonsEl.contains(tokenButton)) { insertToken(tokenButton.dataset.insertToken); return; }
+    const lineButton = event.target.closest("[data-pad-line]");
+    if (lineButton) { padLine(Number(lineButton.dataset.padSection), Number(lineButton.dataset.padLine)); return; }
+    const padButton = event.target.closest("[data-pad-section]");
+    if (padButton) padSection(Number(padButton.dataset.padSection));
+  });
   bindEvent(addSectionBtn, "click", () => { collectModalSections(); editorSong.sections.push(makeSection()); renderModalSections(); }, "add section");
   bindEvent(sectionEditorList, "click", event => { const button = event.target.closest("[data-section-action]"); if (button) handleModalSectionAction(button); }, "modal section actions");
   bindEvent(saveSongBtn, "click", saveSongFromEditor, "save song");

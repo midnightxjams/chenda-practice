@@ -66,11 +66,24 @@ canvas{display:block;width:100%;height:520px}
 .partEditorArea{display:grid;gap:8px}
 .partEditorArea summary{cursor:pointer;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;font-weight:850}
 .sectionEditors{display:grid;gap:9px}
-.sectionCard{border:1px solid #3e4658;border-radius:8px;background:rgba(255,255,255,.04);padding:10px;display:grid;gap:8px}
-.sectionCardHead{display:grid;grid-template-columns:1fr;gap:7px}
+.sectionCard{border:1px solid #3e4658;border-radius:8px;background:rgba(255,255,255,.04);padding:0;overflow:hidden}
+.sectionCard[open]{background:rgba(255,255,255,.055)}
+.sectionCardHead{display:grid;grid-template-columns:1fr;gap:7px;padding:10px;cursor:pointer;border-bottom:1px solid rgba(255,248,236,.08)}
+.sectionCard:not([open]) .sectionCardHead{border-bottom:0}
 .sectionName{font-weight:950;color:var(--gold)}
 .sectionMetric{color:rgba(255,248,236,.72);font-size:.84rem;line-height:1.35;font-weight:800}
 .padSection{justify-self:start;min-height:34px;font-size:.82rem}
+.sectionPreview{color:rgba(255,248,236,.48);font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.codeEditor{display:grid;grid-template-columns:34px minmax(0,1fr);margin:10px;border:1px solid #42495a;border-radius:8px;background:#10131a;overflow:hidden}
+.lineNumbers{margin:0;padding:10px 8px;text-align:right;color:rgba(255,248,236,.38);background:rgba(255,255,255,.035);border-right:1px solid rgba(255,248,236,.1);font:inherit;line-height:1.45;user-select:none;overflow:hidden}
+.codeEditor textarea{border:0;border-radius:0;background:transparent;min-height:116px;resize:vertical}
+.codeEditor textarea:focus{outline:0;box-shadow:inset 0 0 0 2px rgba(66,200,200,.32)}
+.localRestButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0 10px 10px}
+.localRestButtons button{min-height:34px;font-size:.82rem}
+.lineAnalysis{display:grid;gap:6px;margin:0 10px 10px}
+.lineRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-top:1px solid rgba(255,248,236,.08);padding-top:6px;color:rgba(255,248,236,.7);font-size:.82rem;line-height:1.35}
+.lineRow.activeLine{border-color:rgba(242,185,75,.34);background:rgba(242,185,75,.09);border-radius:6px;padding:6px}
+.padLine{min-height:32px;font-size:.78rem;white-space:nowrap}
 textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,185,75,.16)}
 .definitions{margin-top:12px;border:1px solid var(--line);border-radius:8px;background:rgba(26,29,38,.74);padding:10px}
 .definitions summary{cursor:pointer;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;font-weight:850}
@@ -158,6 +171,9 @@ textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,18
   .modalParts{grid-template-columns:1fr}
   .modalPartEditor textarea{min-height:96px;font-size:16px}
   .fullscreenControls{left:10px;right:10px;top:10px;grid-template-columns:1fr 1fr 1fr}
+  .lineRow{grid-template-columns:1fr}
+  .padLine{width:100%;min-height:40px}
+  .localRestButtons button{min-height:42px}
 }
 @media(max-width:430px){
   .loopChoices{grid-template-columns:repeat(3,minmax(0,1fr))}
