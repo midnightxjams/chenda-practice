@@ -79,6 +79,7 @@ canvas{display:block;width:100%;height:520px}
 .codeEditor textarea{border:0;border-radius:0;background:transparent;min-height:116px;resize:vertical}
 .codeEditor textarea:focus{outline:0;box-shadow:inset 0 0 0 2px rgba(66,200,200,.32)}
 .localRestButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0 10px 10px}
+.localRestButtons.withPreferredTokens{grid-template-columns:repeat(4,minmax(0,1fr))}
 .localRestButtons button{min-height:34px;font-size:.82rem}
 .lineAnalysis{display:grid;gap:6px;margin:0 10px 10px}
 .lineRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-top:1px solid rgba(255,248,236,.08);padding-top:6px;color:rgba(255,248,236,.7);font-size:.82rem;line-height:1.35}
@@ -90,7 +91,7 @@ textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,18
 .definitionList{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:10px}
 .definitionRow{display:grid;grid-template-columns:86px 1fr;gap:9px;align-items:center;border:1px solid #3e4658;border-radius:8px;background:rgba(255,255,255,.04);padding:8px}
 .wordLabel{display:inline-grid;place-items:center;min-height:32px;border-radius:8px;padding:0 8px;font-weight:950}
-.word-tha{background:#f2b94b!important;color:#090a0e!important}.word-thaka{background:#42c8c8!important;color:#071011!important}.word-thakaa{background:#60d67f!important;color:#07100a!important}.word-thakka{background:#e95a45!important;color:#fff8ec!important}.word-thakita{background:#8d7cff!important;color:#090a0e!important}.restButton,.restLabel{background:#dfe4ef!important;color:#0b0c10!important}
+.word-tha{background:#f2b94b!important;color:#090a0e!important}.word-thaka{background:#42c8c8!important;color:#071011!important}.word-thakaa{background:#60d67f!important;color:#07100a!important}.word-thakka{background:#e95a45!important;color:#fff8ec!important}.word-thakita{background:#8d7cff!important;color:#090a0e!important}.word-123{background:#ff8fc7!important;color:#130811!important}.restButton,.restLabel{background:#dfe4ef!important;color:#0b0c10!important}
 .appFooter{margin-top:12px;text-align:center;color:rgba(255,248,236,.42);font-size:.76rem;letter-spacing:.04em}
 .modalOverlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:rgba(0,0,0,.66);padding:18px}
 .modalOverlay[hidden]{display:none}

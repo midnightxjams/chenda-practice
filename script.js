@@ -2,6 +2,9 @@ const THAKAA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKAA_TRAILING_GAP_BEATS = 1.0;
 const THAKKA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKKA_TRAILING_GAP_BEATS = 0;
+// Adjust this interval after confirming which Treble/Chenda beats align with Bass counts 1, 2, and 3.
+const COUNT_123_INTERVAL_BEATS = 0.75;
+const COUNT_123_TRAILING_GAP_BEATS = 0;
 const THA_PICKUP_GAP_BEATS = 1.0;
 
 const WORD_DEFINITIONS = {
@@ -43,6 +46,19 @@ const WORD_DEFINITIONS = {
     colorClass: "word-thakita",
     color: { fill: "#8d7cff", glow: "rgba(141,124,255,.46)", text: "#090a0e" },
     description: "Right, Right, Left."
+  },
+  "123": {
+    hits: [
+      { hand: "R", offsetBeats: 0, accented: false, displayLabel: "1" },
+      { hand: "R", offsetBeats: COUNT_123_INTERVAL_BEATS, accented: false, displayLabel: "2" },
+      { hand: "R", offsetBeats: COUNT_123_INTERVAL_BEATS * 2, accented: false, displayLabel: "3" }
+    ],
+    durationBeats: COUNT_123_INTERVAL_BEATS * 3,
+    trailingGapBeats: COUNT_123_TRAILING_GAP_BEATS,
+    colorClass: "word-123",
+    preferredPart: "bass",
+    color: { fill: "#ff8fc7", glow: "rgba(255,143,199,.42)", text: "#130811" },
+    description: "Three evenly spaced Right-hand Bass hits counted as 1, 2, 3."
   }
 };
 
@@ -53,7 +69,7 @@ const REST_DEFINITIONS = {
 };
 
 const DEFAULT_SECTION_COUNT = 4;
-const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA"];
+const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA", "123"];
 const DISPLAY_REST_ORDER = ["REST1", "REST2", "REST4"];
 const LEGACY_WORD_ALIASES = { TA: "THA" };
 const SONG_LIBRARY_KEY = "chendaPracticeSongs";
@@ -330,7 +346,7 @@ function schedulePartLine(section, part, lineIndex, lineStart, loopNumber, secti
     if (restDef(token)) { beat += def.durationBeats; return; }
     const lastHitOffset = Math.max(...def.hits.map(hit => hit.offsetBeats));
     def.hits.forEach((hit, hitIndex) => {
-      canvases[part].hits.push({ hand: hit.hand, accent: !!hit.accented, word: token, part, hitIndex, timeBeat: beat + hit.offsetBeats, loopNumber, sectionNumber, lineNumber: lineIndex + 1 });
+      canvases[part].hits.push({ hand: hit.hand, displayLabel: hit.displayLabel || hit.hand, accent: !!hit.accented, word: token, part, hitIndex, timeBeat: beat + hit.offsetBeats, loopNumber, sectionNumber, lineNumber: lineIndex + 1 });
     });
     canvases[part].groups.push({ word: token, startBeat: beat, endBeat: beat + lastHitOffset, centerBeat: beat + lastHitOffset / 2, loopNumber, sectionNumber, lineNumber: lineIndex + 1 });
     beat += def.durationBeats;
@@ -562,7 +578,7 @@ function drawNote(ctx, canvas, x, y, hit, delta, visualScale) {
   ctx.font = "950 " + Math.round(31 * visualScale) + "px Inter, system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(hit.hand, 0, -2 * visualScale);
+  ctx.fillText(hit.displayLabel || hit.hand, 0, -2 * visualScale);
   ctx.fillStyle = hit.word === "THAKKA" ? "rgba(255,248,236,.86)" : "rgba(9,10,14,.72)";
   ctx.font = "850 " + Math.round(10 * visualScale) + "px Inter, system-ui";
   ctx.fillText(hit.word, 0, noteH * .34);
@@ -632,12 +648,25 @@ function renderPartEditors(part, container) {
     numbers.textContent = lineNumberText(textarea.value);
     editorShell.append(numbers, textarea);
     const restButtons = document.createElement("div");
-    restButtons.className = "localRestButtons";
+    const preferredTokens = supportedWords().filter(word => WORD_DEFINITIONS[word].preferredPart === part);
+    restButtons.className = "localRestButtons" + (preferredTokens.length ? " withPreferredTokens" : "");
+    preferredTokens.forEach(word => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "insertButton " + WORD_DEFINITIONS[word].colorClass;
+      button.dataset.insertToken = word;
+      button.dataset.insertPart = part;
+      button.dataset.insertSection = String(index);
+      button.textContent = word;
+      restButtons.appendChild(button);
+    });
     supportedRests().forEach(rest => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ghost";
       button.dataset.insertToken = rest;
+      button.dataset.insertPart = part;
+      button.dataset.insertSection = String(index);
       button.textContent = "Rest " + REST_DEFINITIONS[rest].durationBeats;
       restButtons.appendChild(button);
     });
@@ -745,6 +774,11 @@ function insertToken(token) {
   setActiveEditor(activeEditor);
   updatePatternFromEditor(activeEditor);
 }
+function insertTokenForPart(token, part, sectionIndex) {
+  const textarea = document.querySelector("textarea[data-part='" + part + "'][data-section-index='" + sectionIndex + "']");
+  if (textarea) setActiveEditor(textarea);
+  insertToken(token);
+}
 function padSection(index) {
   const section = currentSong.sections[index];
   if (!section) return;
@@ -781,7 +815,11 @@ function renderDefinitions() {
     label.className = "wordLabel " + def.colorClass;
     label.textContent = word;
     const text = document.createElement("span");
-    text.textContent = hitLegend(def) + (def.pickupGapAfterBeats ? "; pause before the next word" : "") + (def.trailingGapBeats ? "; trailing gap " + def.trailingGapBeats + " beat" : "");
+    const notes = [hitLegend(def)];
+    if (def.pickupGapAfterBeats) notes.push("pause before the next word");
+    if (def.trailingGapBeats) notes.push("trailing gap " + def.trailingGapBeats + " beat");
+    if (def.description) notes.push(def.description);
+    text.textContent = notes.join("; ");
     row.append(label, text);
     wordDefinitionListEl.appendChild(row);
   });
@@ -1009,7 +1047,11 @@ function initializeApp() {
   document.addEventListener("scroll", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) syncLineNumbers(event.target); }, true);
   document.addEventListener("click", event => {
     const tokenButton = event.target.closest("[data-insert-token]");
-    if (tokenButton && !insertButtonsEl.contains(tokenButton)) { insertToken(tokenButton.dataset.insertToken); return; }
+    if (tokenButton && !insertButtonsEl.contains(tokenButton)) {
+      if (tokenButton.dataset.insertPart && tokenButton.dataset.insertSection) insertTokenForPart(tokenButton.dataset.insertToken, tokenButton.dataset.insertPart, tokenButton.dataset.insertSection);
+      else insertToken(tokenButton.dataset.insertToken);
+      return;
+    }
     const lineButton = event.target.closest("[data-pad-line]");
     if (lineButton) { padLine(Number(lineButton.dataset.padSection), Number(lineButton.dataset.padLine)); return; }
     const padButton = event.target.closest("[data-pad-section]");
