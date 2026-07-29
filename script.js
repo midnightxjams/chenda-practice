@@ -1,7 +1,7 @@
 const THAKAA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKAA_TRAILING_GAP_BEATS = 1.0;
 const THAKKA_INTERNAL_PAUSE_BEATS = 0.5;
-const THAKKA_TRAILING_GAP_BEATS = 0.25;
+const THAKKA_TRAILING_GAP_BEATS = 0;
 const THA_PICKUP_GAP_BEATS = 1.0;
 
 const WORD_DEFINITIONS = {
@@ -31,11 +31,11 @@ const WORD_DEFINITIONS = {
   },
   THAKKA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1 + THAKKA_INTERNAL_PAUSE_BEATS, accented: false }],
-    durationBeats: 2 + THAKKA_INTERNAL_PAUSE_BEATS,
+    durationBeats: 2,
     trailingGapBeats: THAKKA_TRAILING_GAP_BEATS,
     colorClass: "word-thakka",
     color: { fill: "#e95a45", glow: "rgba(233,90,69,.5)", text: "#fff8ec" },
-    description: "Right, slight pause, Left, then a short gap before the next word."
+    description: "Right at the normal word start, a slightly extended pause, then Left close to the next word."
   },
   THAKITA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "R", offsetBeats: 1, accented: false }, { hand: "L", offsetBeats: 2, accented: false }],
@@ -372,11 +372,28 @@ function highlightActiveLine(line) {
     const row = document.querySelector(".lineRow[data-part='" + part + "'][data-section-index='" + (line.sectionNumber - 1) + "'][data-line-index='" + (line.lineNumber - 1) + "']");
     if (row) {
       row.classList.add("activeLine");
-      if (shouldReveal) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      const details = row.closest("details.sectionCard");
-      if (details) details.open = true;
+      revealActiveLineInsideEditor(row, shouldReveal);
     }
   });
+}
+
+function revealActiveLineInsideEditor(row, shouldReveal) {
+  const pageX = window.scrollX || 0;
+  const pageY = window.scrollY || 0;
+  const details = row.closest("details.sectionCard");
+  if (details) details.open = true;
+  if (shouldReveal) {
+    const container = row.closest(".partEditorArea");
+    if (container && typeof container.scrollTop === "number") {
+      const rowTop = row.offsetTop;
+      const rowBottom = rowTop + row.offsetHeight;
+      const viewTop = container.scrollTop;
+      const viewBottom = viewTop + container.clientHeight;
+      if (rowTop < viewTop) container.scrollTop = Math.max(0, rowTop - 12);
+      if (rowBottom > viewBottom) container.scrollTop = rowBottom - container.clientHeight + 12;
+    }
+  }
+  if (typeof window.scrollTo === "function") window.scrollTo(pageX, pageY);
 }
 
 function resizeCanvas(canvas) {
