@@ -277,11 +277,13 @@ function measureTokens(tokens, nextLineFirstToken = "") {
 function lineAlignment(section, lineIndex) {
   const treble = measureTokens(lineTokens(section.treblePattern, lineIndex), firstTokenAfterLine(section.treblePattern, lineIndex + 1));
   const bass = measureTokens(lineTokens(section.bassPattern, lineIndex), firstTokenAfterLine(section.bassPattern, lineIndex + 1));
-  const duration = Math.max(treble, bass);
-  const diff = Math.abs(treble - bass);
-  if (diff < .001) return { line: lineIndex + 1, treble, bass, duration, aligned: true, text: "Line " + (lineIndex + 1) + " aligned: " + beatsText(duration) };
-  const shorter = treble > bass ? "Bass" : "Treble";
-  return { line: lineIndex + 1, treble, bass, duration, aligned: false, shorter: shorter.toLowerCase(), text: "Line " + (lineIndex + 1) + ": " + shorter + " short by " + beatsText(diff) };
+  const duration = treble;
+  const diff = bass - treble;
+  const aligned = Math.abs(diff) < .001;
+  const bassSilentBeats = diff < 0 ? Math.abs(diff) : 0;
+  const bassOverflowBeats = diff > 0 ? diff : 0;
+  const status = aligned ? "Aligned to Treble" : bassOverflowBeats ? "Bass exceeds Treble by " + beatsText(bassOverflowBeats) : "Bass silent for final " + beatsText(bassSilentBeats);
+  return { line: lineIndex + 1, treble, bass, duration, aligned, shorter: bassSilentBeats ? "bass" : "", overflow: bassOverflowBeats > 0, bassSilentBeats, bassOverflowBeats, text: "Line " + (lineIndex + 1) + " - Treble duration: " + beatsText(treble) + " - Bass duration: " + beatsText(bass) + " - " + status };
 }
 function sectionLineAlignments(section) { return Array.from({ length: patternLineCount(section) }, (_, index) => lineAlignment(section, index)); }
 function sectionAlignment(section) {
@@ -289,10 +291,12 @@ function sectionAlignment(section) {
   const treble = lines.reduce((sum, line) => sum + line.treble, 0);
   const bass = lines.reduce((sum, line) => sum + line.bass, 0);
   const duration = lines.reduce((sum, line) => sum + line.duration, 0);
-  const diff = Math.abs(treble - bass);
-  if (lines.every(line => line.aligned)) return { treble, bass, duration, aligned: true, text: "Aligned: " + beatsText(duration), lines };
-  const shorter = treble > bass ? "Bass" : "Treble";
-  return { treble, bass, duration, aligned: false, shorter: shorter.toLowerCase(), text: shorter + " rests for remaining " + beatsText(diff), lines };
+  const bassSilentBeats = lines.reduce((sum, line) => sum + line.bassSilentBeats, 0);
+  const bassOverflowBeats = lines.reduce((sum, line) => sum + line.bassOverflowBeats, 0);
+  const overflowLines = lines.filter(line => line.overflow).length;
+  const aligned = !bassSilentBeats && !bassOverflowBeats;
+  const text = aligned ? "Manual sync aligned: " + beatsText(duration) : bassOverflowBeats ? "Manual sync: Bass exceeds Treble on " + overflowLines + " " + (overflowLines === 1 ? "line" : "lines") + " by " + beatsText(bassOverflowBeats) : "Manual sync: Bass silent for " + beatsText(bassSilentBeats);
+  return { treble, bass, duration, aligned, shorter: bassSilentBeats ? "bass" : "", overflow: bassOverflowBeats > 0, bassSilentBeats, bassOverflowBeats, text, lines };
 }
 function restPaddingForBeats(beats) {
   const rounded = Math.round(beats);
@@ -305,6 +309,36 @@ function restPaddingForBeats(beats) {
   return tokens;
 }
 function appendTokens(text, tokens) { const clean = normalizePatternText(text); return (clean ? clean + " " : "") + tokens.join(" "); }
+
+function timingSummary(section, part, lineIndex) {
+  const pattern = section[patternKey(part)];
+  const tokens = lineTokens(pattern, lineIndex);
+  const nextLineFirstToken = firstTokenAfterLine(pattern, lineIndex + 1);
+  let beat = 0;
+  const entries = [];
+  tokens.forEach((token, index) => {
+    const def = tokenDef(token);
+    const next = tokens[index + 1] || (index === tokens.length - 1 ? nextLineFirstToken : "");
+    if (!def) return;
+    const start = beat;
+    if (restDef(token)) {
+      beat += def.durationBeats;
+      entries.push(token + " = beats " + beatNumber(start) + "-" + beatNumber(beat));
+      return;
+    }
+    const hitText = def.hits
+      .slice()
+      .sort((a, b) => a.offsetBeats - b.offsetBeats)
+      .map(hit => (hit.displayLabel || hit.hand) + "@" + beatNumber(start + hit.offsetBeats))
+      .join(", ");
+    entries.push(token + " begins at beat " + beatNumber(start) + " (" + hitText + ")");
+    beat += def.durationBeats;
+    if (next && wordDef(next) && def.trailingGapBeats) beat += def.trailingGapBeats;
+    if (next && wordDef(next) && def.pickupGapAfterBeats && def.pickupTarget === "nextNonTHA" && next !== "THA") beat += def.pickupGapAfterBeats;
+  });
+  return entries.length ? entries.join("; ") : "No tokens";
+}
+function beatNumber(value) { return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); }
 
 function buildTimeline() {
   PARTS.forEach(part => { canvases[part].hits = []; canvases[part].groups = []; });
@@ -326,7 +360,7 @@ function appendSongLoop() {
     for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
       const trebleDuration = schedulePartLine(section, "treble", lineIndex, lineStart, loopNumber, sectionIndex + 1);
       const bassDuration = schedulePartLine(section, "bass", lineIndex, lineStart, loopNumber, sectionIndex + 1);
-      const lineDuration = Math.max(trebleDuration, bassDuration);
+      const lineDuration = trebleDuration;
       lineBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", lineNumber: lineIndex + 1, startBeat: lineStart, endBeat: lineStart + lineDuration });
       lineStart += lineDuration;
     }
@@ -630,7 +664,7 @@ function renderPartEditors(part, container) {
     pad.type = "button";
     pad.className = "ghost padSection";
     pad.dataset.padSection = String(index);
-    pad.textContent = "Pad Shorter Part";
+    pad.textContent = "Pad Bass Section";
     const preview = document.createElement("div");
     preview.className = "sectionPreview";
     preview.textContent = patternPreview(section[patternKey(part)]);
@@ -697,20 +731,29 @@ function renderLineAnalysis(section, sectionIndex, part) {
   container.innerHTML = "";
   sectionLineAlignments(section).forEach(info => {
     const row = document.createElement("div");
-    row.className = "lineRow";
+    row.className = "lineRow" + (part === "bass" && info.overflow ? " overflowLine" : "") + (part === "bass" && info.bassSilentBeats ? " silentLine" : "");
     row.dataset.part = part;
     row.dataset.sectionIndex = String(sectionIndex);
     row.dataset.lineIndex = String(info.line - 1);
     const text = document.createElement("span");
-    text.textContent = info.aligned ? info.text : "Line " + info.line + " - Treble: " + beatsText(info.treble) + " - Bass: " + beatsText(info.bass) + " - " + (info.shorter === "bass" ? "Bass" : "Treble") + " short by " + beatsText(Math.abs(info.treble - info.bass));
+    text.textContent = info.text;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ghost padLine";
     button.dataset.padSection = String(sectionIndex);
     button.dataset.padLine = String(info.line - 1);
-    button.textContent = "Pad Shorter Line";
-    button.hidden = info.aligned;
-    row.append(text, button);
+    button.textContent = "Pad Bass Line";
+    button.hidden = !(part === "bass" && info.bassSilentBeats > 0);
+    const details = document.createElement("details");
+    details.className = "lineTiming";
+    const summary = document.createElement("summary");
+    summary.textContent = "Timing details";
+    const trebleDetail = document.createElement("div");
+    trebleDetail.textContent = "Treble: " + timingSummary(section, "treble", info.line - 1);
+    const bassDetail = document.createElement("div");
+    bassDetail.textContent = "Bass: " + timingSummary(section, "bass", info.line - 1);
+    details.append(summary, trebleDetail, bassDetail);
+    row.append(text, button, details);
     container.appendChild(row);
   });
 }
@@ -720,7 +763,7 @@ function updateAllMetrics() {
     document.querySelectorAll("[data-metric-for='" + index + "']").forEach(metric => {
       metric.textContent = "Treble: " + beatsText(info.treble) + " - Bass: " + beatsText(info.bass) + " - " + info.text;
     });
-    document.querySelectorAll("[data-pad-section='" + index + "']").forEach(button => { button.hidden = info.aligned; });
+    document.querySelectorAll(".padSection[data-pad-section='" + index + "']").forEach(button => { button.hidden = !(info.bassSilentBeats > 0 && !info.overflow); });
     PARTS.forEach(part => renderLineAnalysis(section, index, part));
   });
 }
@@ -747,10 +790,13 @@ function padLine(sectionIndex, lineIndex) {
   const section = currentSong.sections[sectionIndex];
   if (!section) return;
   const info = lineAlignment(section, lineIndex);
-  if (info.aligned) return;
-  const padding = restPaddingForBeats(Math.abs(info.treble - info.bass));
-  if (!padding) { window.alert("This line is short by " + beatsText(Math.abs(info.treble - info.bass)) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
-  const key = info.treble > info.bass ? "bassPattern" : "treblePattern";
+  if (!info.bassSilentBeats) {
+    if (info.overflow) window.alert("Bass exceeds Treble by " + beatsText(info.bassOverflowBeats) + ". Remove Bass words or adjust REST tokens manually.");
+    return;
+  }
+  const padding = restPaddingForBeats(info.bassSilentBeats);
+  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
+  const key = "bassPattern";
   const lines = splitPatternLines(section[key]);
   while (lines.length <= lineIndex) lines.push("");
   lines[lineIndex] = appendTokens(lines[lineIndex], padding);
@@ -783,11 +829,13 @@ function padSection(index) {
   const section = currentSong.sections[index];
   if (!section) return;
   const info = sectionAlignment(section);
-  if (info.aligned) return;
-  const padding = restPaddingForBeats(Math.abs(info.treble - info.bass));
-  if (!padding) { window.alert("This section is short by " + beatsText(Math.abs(info.treble - info.bass)) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
-  const key = info.treble > info.bass ? "bassPattern" : "treblePattern";
-  section[key] = appendTokens(section[key], padding);
+  if (!info.bassSilentBeats || info.overflow) {
+    if (info.overflow) window.alert("Bass exceeds Treble by " + beatsText(info.bassOverflowBeats) + ". Remove Bass words or adjust REST tokens manually.");
+    return;
+  }
+  const padding = restPaddingForBeats(info.bassSilentBeats);
+  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
+  section.bassPattern = appendTokens(section.bassPattern, padding);
   saveCurrentSongIfPersisted();
   renderWorkspace();
 }
@@ -903,13 +951,14 @@ function renderModalSections() {
     parts.append(createModalPart(section, index, "treble"), createModalPart(section, index, "bass"));
     const metric = document.createElement("div");
     metric.className = "sectionMetric modalMetric";
-    metric.textContent = sectionAlignment(section).text;
+    const alignment = sectionAlignment(section);
+    metric.textContent = alignment.text;
     const pad = document.createElement("button");
     pad.type = "button";
     pad.className = "ghost";
     pad.dataset.sectionAction = "pad";
-    pad.textContent = "Pad Shorter Part";
-    pad.hidden = sectionAlignment(section).aligned;
+    pad.textContent = "Pad Bass Section";
+    pad.hidden = !(alignment.bassSilentBeats > 0 && !alignment.overflow);
     card.append(head, parts, metric, pad);
     sectionEditorList.appendChild(card);
   });
@@ -941,10 +990,13 @@ function handleModalSectionAction(button) {
   }
   if (action === "pad" && editorSong.sections[index]) {
     const info = sectionAlignment(editorSong.sections[index]);
-    const padding = restPaddingForBeats(Math.abs(info.treble - info.bass));
-    if (!padding) { window.alert("This section is short by " + beatsText(Math.abs(info.treble - info.bass)) + ". REST tokens can only pad whole beats."); return; }
-    const key = info.treble > info.bass ? "bassPattern" : "treblePattern";
-    editorSong.sections[index][key] = appendTokens(editorSong.sections[index][key], padding);
+    if (!info.bassSilentBeats || info.overflow) {
+      if (info.overflow) window.alert("Bass exceeds Treble by " + beatsText(info.bassOverflowBeats) + ". Remove Bass words or adjust REST tokens manually.");
+      return;
+    }
+    const padding = restPaddingForBeats(info.bassSilentBeats);
+    if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST tokens can only pad whole beats."); return; }
+    editorSong.sections[index].bassPattern = appendTokens(editorSong.sections[index].bassPattern, padding);
   }
   renderModalSections();
 }
