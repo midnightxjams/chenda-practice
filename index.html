@@ -16,17 +16,7 @@
     <div class="status"><span class="dot"></span><span id="state">Stopped</span></div>
   </header>
 
-  <section class="controlBar" aria-label="Shared song controls">
-    <div class="controlGroup songControls">
-      <label for="savedSongs">Saved Song</label>
-      <select id="savedSongs" aria-label="Saved Song"></select>
-      <div class="buttonRow">
-        <button type="button" id="newSong">New Song</button>
-        <button type="button" class="secondary" id="editSong">Edit Song</button>
-        <button type="button" class="danger" id="deleteSong">Delete Song</button>
-      </div>
-    </div>
-
+  <section class="controlBar" aria-label="Shared practice controls">
     <div class="controlGroup bpmControls">
       <label for="bpm">BPM</label>
       <div class="bpmRow">
@@ -87,10 +77,6 @@
         <canvas id="trebleLane" width="720" height="520" aria-label="Treble left and right hand note lanes"></canvas>
         <div class="hitText">Fixed line</div>
       </div>
-      <details class="partEditorArea" open>
-        <summary>Treble / Chenda Pattern</summary>
-        <div class="sectionEditors" id="trebleEditors"></div>
-      </details>
     </article>
 
     <article class="partPanel bassPanel">
@@ -102,6 +88,36 @@
         <canvas id="bassLane" width="720" height="520" aria-label="Bass left and right hand note lanes"></canvas>
         <div class="hitText">Fixed line</div>
       </div>
+    </article>
+  </section>
+
+  <section class="songWorkspace" aria-label="Song Workspace">
+    <div class="workspaceHead">
+      <h2>SONG WORKSPACE</h2>
+      <span class="saveStatus" id="songSaveStatus">New song - not saved</span>
+    </div>
+    <div class="workspaceControls">
+      <label class="workspaceField" for="savedSongs"><span>Saved Song</span><select id="savedSongs" aria-label="Saved Song"></select></label>
+      <button type="button" id="loadSong">Load Song</button>
+      <label class="workspaceField songNameField" for="songNameInput"><span>Song Name</span><input id="songNameInput" type="text" autocomplete="off" placeholder="Song name"></label>
+      <div class="workspaceActions">
+        <button type="button" class="secondary" id="newSong">New Song</button>
+        <button type="button" id="saveSong">Save Song</button>
+        <button type="button" class="accent" id="saveAsSong">Save As</button>
+        <button type="button" class="danger" id="deleteSong">Delete Song</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="editorGrid">
+    <article class="partPanel editorPanel treblePanel">
+      <details class="partEditorArea" open>
+        <summary>Treble / Chenda Pattern</summary>
+        <div class="sectionEditors" id="trebleEditors"></div>
+      </details>
+    </article>
+
+    <article class="partPanel editorPanel bassPanel">
       <details class="partEditorArea" open>
         <summary>Bass Pattern</summary>
         <div class="sectionEditors" id="bassEditors"></div>
@@ -115,30 +131,6 @@
   </details>
 
   <footer class="appFooter">Chenda Practice Trainer v0.1.0</footer>
-
-  <div class="modalOverlay" id="songModal" hidden>
-    <div class="songModal" role="dialog" aria-modal="true" aria-labelledby="songModalTitle">
-      <div class="modalHead">
-        <h2 id="songModalTitle">Song</h2>
-        <button type="button" class="secondary closeButton" id="cancelSongTop" aria-label="Close song editor">×</button>
-      </div>
-      <div class="modalBody">
-        <div class="field">
-          <label for="songNameInput">Song name</label>
-          <input id="songNameInput" type="text" autocomplete="off">
-        </div>
-        <div class="sectionEditorToolbar">
-          <span>Song Sections</span>
-          <button type="button" id="addSection">Add Section</button>
-        </div>
-        <div class="sectionEditorList" id="sectionEditorList"></div>
-      </div>
-      <div class="modalActions">
-        <button type="button" id="saveSong">Save Song</button>
-        <button type="button" class="secondary" id="cancelSong">Cancel</button>
-      </div>
-    </div>
-  </div>
 
   <div class="fullscreenControls" id="fullscreenControls">
     <button class="secondary" id="fullscreenStop" type="button">Stop</button>

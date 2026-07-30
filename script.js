@@ -92,9 +92,13 @@ const defaultSong = {
 const $ = id => document.getElementById(id);
 const app = $("app");
 const savedSongsSelect = $("savedSongs");
+const loadSongBtn = $("loadSong");
 const newSongBtn = $("newSong");
-const editSongBtn = $("editSong");
 const deleteSongBtn = $("deleteSong");
+const saveSongBtn = $("saveSong");
+const saveAsSongBtn = $("saveAsSong");
+const songNameInput = $("songNameInput");
+const songSaveStatusEl = $("songSaveStatus");
 const bpm = $("bpm");
 const bpmNumber = $("bpmNumber");
 const metronomeToggle = $("metronomeToggle");
@@ -119,14 +123,6 @@ const bassEditorsEl = $("bassEditors");
 const trebleNowEl = $("trebleNow");
 const bassNowEl = $("bassNow");
 const wordDefinitionListEl = $("wordDefinitionList");
-const songModal = $("songModal");
-const songModalTitle = $("songModalTitle");
-const songNameInput = $("songNameInput");
-const sectionEditorList = $("sectionEditorList");
-const addSectionBtn = $("addSection");
-const saveSongBtn = $("saveSong");
-const cancelSongBtn = $("cancelSong");
-const cancelSongTopBtn = $("cancelSongTop");
 const canvases = {
   treble: { canvas: $("trebleLane"), nowEl: trebleNowEl, hits: [], groups: [] },
   bass: { canvas: $("bassLane"), nowEl: bassNowEl, hits: [], groups: [] }
@@ -135,7 +131,7 @@ PARTS.forEach(part => { canvases[part].ctx = canvases[part].canvas.getContext("2
 
 let currentSongId = "";
 let currentSong = cloneSong(defaultSong);
-let editorSong = null;
+let isDirty = false;
 let activeEditor = null;
 let activeEditorPart = "treble";
 let running = false;
@@ -203,16 +199,7 @@ function readSongLibrary() {
 }
 function writeSongLibrary(songs) { localStorage.setItem(SONG_LIBRARY_KEY, JSON.stringify(songs.map(normalizeSong))); }
 function findSong(id = currentSongId) { return readSongLibrary().find(song => song.id === id); }
-function saveCurrentSongIfPersisted() {
-  if (!currentSongId) return;
-  const songs = readSongLibrary();
-  const index = songs.findIndex(song => song.id === currentSongId);
-  if (index >= 0) {
-    songs[index] = normalizeSong(currentSong);
-    writeSongLibrary(songs);
-    refreshSavedSongs(currentSongId);
-  }
-}
+function makeBlankSong() { return { id: "", name: "", sections: createDefaultSections(), lastPart: "treble" }; }
 function refreshSavedSongs(selectedId = currentSongId) {
   const songs = readSongLibrary().sort((a, b) => a.name.localeCompare(b.name));
   savedSongsSelect.innerHTML = "";
@@ -228,17 +215,130 @@ function refreshSavedSongs(selectedId = currentSongId) {
   });
   if (selectedId && songs.some(song => song.id === selectedId)) savedSongsSelect.value = selectedId;
 }
-function loadSong(id) {
+function setDirty(value, message = "") {
+  isDirty = !!value;
+  updateSongStatus(message);
+}
+function markDirty() { setDirty(true); }
+function updateSongStatus(message = "") {
+  if (!songSaveStatusEl) return;
+  if (message) songSaveStatusEl.textContent = message;
+  else if (isDirty) songSaveStatusEl.textContent = "\u25cf Unsaved changes";
+  else if (currentSongId) songSaveStatusEl.textContent = "\u2713 Saved";
+  else songSaveStatusEl.textContent = "New song - not saved";
+  songSaveStatusEl.classList.toggle("dirty", isDirty);
+  songSaveStatusEl.classList.toggle("saved", !isDirty && !!currentSongId);
+}
+function confirmDiscardChanges(message = "You have unsaved changes. Load another song and discard them?") {
+  return !isDirty || window.confirm(message);
+}
+function loadSong(id, { protect = true } = {}) {
+  if (protect && !confirmDiscardChanges()) return false;
   const song = findSong(id);
-  if (!song) return;
+  if (!song) return false;
   currentSongId = song.id;
   currentSong = normalizeSong(song);
+  setDirty(false);
   renderWorkspace();
   resetReference();
+  return true;
 }
-function clearSelectedSong() {
+function loadSelectedSong() {
+  const id = savedSongsSelect.value;
+  if (!id) { window.alert("Select a saved song to load."); return; }
+  loadSong(id);
+}
+function clearSelectedSong({ protect = true } = {}) {
+  if (protect && !confirmDiscardChanges("You have unsaved changes. Start a new song and discard them?")) return false;
   currentSongId = "";
-  currentSong = cloneSong(defaultSong);
+  currentSong = makeBlankSong();
+  if (savedSongsSelect) savedSongsSelect.value = "";
+  setDirty(false, "New song - not saved");
+  renderWorkspace();
+  resetReference();
+  return true;
+}
+function validateCurrentSong() {
+  const name = songNameInput.value.trim();
+  if (!name) { window.alert("Enter a song name before saving."); return null; }
+  for (let i = 0; i < currentSong.sections.length; i++) {
+    const section = currentSong.sections[i];
+    const trebleBad = invalidPatternTokens(section.treblePattern);
+    const bassBad = invalidPatternTokens(section.bassPattern);
+    if (trebleBad.length || bassBad.length) {
+      window.alert("Section " + (i + 1) + " has unsupported tokens: " + [...new Set([...trebleBad, ...bassBad])].join(", "));
+      return null;
+    }
+  }
+  return name;
+}
+function saveCurrentSong() {
+  const name = validateCurrentSong();
+  if (!name) return false;
+  const songs = readSongLibrary();
+  let id = currentSongId;
+  let index = songs.findIndex(song => song.id === id);
+  if (!id || index < 0) {
+    id = "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+    currentSongId = id;
+    index = songs.length;
+  }
+  currentSong.name = name;
+  currentSong.id = id;
+  songs[index] = normalizeSong(currentSong);
+  writeSongLibrary(songs);
+  refreshSavedSongs(id);
+  setDirty(false, "\u2713 Saved");
+  renderWorkspace();
+  resetReference();
+  return true;
+}
+function saveCurrentSongAs() {
+  const cleanName = songNameInput.value.trim();
+  if (!cleanName) { window.alert("Enter a song name before saving."); return false; }
+  const original = currentSongId ? findSong(currentSongId) : null;
+  if (original && original.name.trim() === cleanName) {
+    updateSongStatus("Enter a new Song Name, then click Save As");
+    if (isDesktopViewport()) {
+      songNameInput.focus();
+      if (songNameInput.select) songNameInput.select();
+    }
+    return false;
+  }
+  const invalid = currentSong.sections.flatMap(section => [...invalidPatternTokens(section.treblePattern), ...invalidPatternTokens(section.bassPattern)]);
+  if (invalid.length) { window.alert("Unsupported tokens: " + [...new Set(invalid)].join(", ")); return false; }
+  const id = "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  const copy = normalizeSong({ ...currentSong, id, name: cleanName, sections: currentSong.sections.map(section => ({ ...section, id: "" })) });
+  const songs = readSongLibrary();
+  songs.push(copy);
+  writeSongLibrary(songs);
+  currentSongId = id;
+  currentSong = normalizeSong(copy);
+  refreshSavedSongs(id);
+  setDirty(false, "\u2713 Saved");
+  renderWorkspace();
+  resetReference();
+  return true;
+}
+function deleteSelectedSong() {
+  const song = findSong();
+  if (!song) { window.alert("Select a saved song to delete."); return; }
+  if (isDirty && !window.confirm("You have unsaved changes. Delete this saved song and discard them?")) return;
+  if (!window.confirm("Delete saved song: " + song.name + "?")) return;
+  writeSongLibrary(readSongLibrary().filter(item => item.id !== song.id));
+  const remaining = readSongLibrary();
+  if (remaining.length) {
+    const next = remaining.sort((a, b) => a.name.localeCompare(b.name))[0];
+    currentSongId = next.id;
+    currentSong = normalizeSong(next);
+    setDirty(false);
+    refreshSavedSongs(next.id);
+  } else {
+    currentSongId = "";
+    currentSong = makeBlankSong();
+    setDirty(false, "New song - not saved");
+    refreshSavedSongs("");
+  }
   renderWorkspace();
   resetReference();
 }
@@ -637,14 +737,28 @@ function roundRect(ctx, x, y, w, h, r) {
 
 function renderWorkspace() {
   songTitleEl.textContent = currentSong.name || "Unsaved practice song";
+  if (songNameInput) songNameInput.value = currentSong.name || "";
   renderPartEditors("treble", trebleEditorsEl);
   renderPartEditors("bass", bassEditorsEl);
   updateAllMetrics();
+  updateSongStatus();
   buildTimeline();
   draw(pauseElapsed);
 }
 function renderPartEditors(part, container) {
   container.innerHTML = "";
+  const toolbar = document.createElement("div");
+  toolbar.className = "editorToolbar";
+  const toolbarText = document.createElement("span");
+  toolbarText.textContent = partLabel(part) + " sections";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "secondary";
+  add.dataset.sectionAction = "add";
+  add.textContent = "Add Section";
+  add.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); handleInlineSectionAction(add); });
+  toolbar.append(toolbarText, add);
+  container.appendChild(toolbar);
   currentSong.sections.forEach((section, index) => {
     const card = document.createElement("details");
     card.className = "sectionCard";
@@ -655,7 +769,29 @@ function renderPartEditors(part, container) {
     head.className = "sectionCardHead";
     const title = document.createElement("div");
     title.className = "sectionName";
-    title.textContent = "Section " + (index + 1) + (section.name ? " - " + section.name : "");
+    title.textContent = "Section " + (index + 1);
+    const name = document.createElement("input");
+    name.type = "text";
+    name.className = "sectionNameInput";
+    name.placeholder = "Section title";
+    name.value = section.name || "";
+    name.dataset.sectionName = "true";
+    name.dataset.sectionIndex = String(index);
+    name.addEventListener("click", event => event.stopPropagation());
+    name.addEventListener("keydown", event => event.stopPropagation());
+    const actions = document.createElement("div");
+    actions.className = "sectionActions";
+    [["up", "Up"], ["down", "Down"], ["duplicate", "Duplicate"], ["delete", "Delete"]].forEach(([action, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = action === "delete" ? "danger" : "secondary";
+      button.dataset.sectionAction = action;
+      button.dataset.sectionIndex = String(index);
+      button.textContent = label;
+      if ((action === "up" && index === 0) || (action === "down" && index === currentSong.sections.length - 1)) button.disabled = true;
+      button.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); handleInlineSectionAction(button); });
+      actions.appendChild(button);
+    });
     const metric = document.createElement("div");
     metric.className = "sectionMetric";
     metric.dataset.metricFor = String(index);
@@ -668,7 +804,7 @@ function renderPartEditors(part, container) {
     const preview = document.createElement("div");
     preview.className = "sectionPreview";
     preview.textContent = patternPreview(section[patternKey(part)]);
-    head.append(title, metric, preview, pad);
+    head.append(title, name, actions, metric, preview, pad);
     const editorShell = document.createElement("div");
     editorShell.className = "codeEditor";
     const numbers = document.createElement("pre");
@@ -781,10 +917,39 @@ function updatePatternFromEditor(textarea) {
   if (!currentSong.sections[index]) return;
   syncLineNumbers(textarea);
   currentSong.sections[index][patternKey(part)] = textarea.value;
-  saveCurrentSongIfPersisted();
+  markDirty();
   buildTimeline();
   updateAllMetrics();
   draw(pauseElapsed);
+}
+function updateSongNameFromInput() {
+  currentSong.name = songNameInput.value;
+  songTitleEl.textContent = currentSong.name.trim() || "Unsaved practice song";
+  markDirty();
+}
+function updateSectionNameFromInput(input) {
+  const index = Number(input.dataset.sectionIndex);
+  if (!currentSong.sections[index]) return;
+  currentSong.sections[index].name = input.value;
+  document.querySelectorAll("[data-section-name][data-section-index='" + index + "']").forEach(item => {
+    if (item !== input) item.value = input.value;
+  });
+  markDirty();
+}
+function handleInlineSectionAction(button) {
+  const action = button.dataset.sectionAction;
+  const index = Number(button.dataset.sectionIndex);
+  if (action === "add") currentSong.sections.push(makeSection());
+  if (action === "up" && index > 0) [currentSong.sections[index - 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index - 1]];
+  if (action === "down" && index < currentSong.sections.length - 1) [currentSong.sections[index + 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index + 1]];
+  if (action === "duplicate" && currentSong.sections[index]) currentSong.sections.splice(index + 1, 0, makeSection({ ...currentSong.sections[index], id: "" }));
+  if (action === "delete") {
+    if (currentSong.sections.length <= 1) { window.alert("A song needs at least one section."); return; }
+    if (!window.confirm("Delete Section " + (index + 1) + "?")) return;
+    currentSong.sections.splice(index, 1);
+  }
+  markDirty();
+  renderWorkspace();
 }
 function padLine(sectionIndex, lineIndex) {
   const section = currentSong.sections[sectionIndex];
@@ -801,7 +966,7 @@ function padLine(sectionIndex, lineIndex) {
   while (lines.length <= lineIndex) lines.push("");
   lines[lineIndex] = appendTokens(lines[lineIndex], padding);
   section[key] = lines.join("\n");
-  saveCurrentSongIfPersisted();
+  markDirty();
   renderWorkspace();
 }
 function insertToken(token) {
@@ -836,7 +1001,7 @@ function padSection(index) {
   const padding = restPaddingForBeats(info.bassSilentBeats);
   if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
   section.bassPattern = appendTokens(section.bassPattern, padding);
-  saveCurrentSongIfPersisted();
+  markDirty();
   renderWorkspace();
 }
 
@@ -896,149 +1061,6 @@ function hitLegend(def) {
   return parts.join(parts.includes("pause") ? ", " : " ");
 }
 
-function openSongEditor(song = null) {
-  editorSong = song ? normalizeSong(song) : { id: "", name: "", sections: createDefaultSections(), lastPart: "treble" };
-  songModalTitle.textContent = song ? "Edit Song" : "New Song";
-  songNameInput.value = editorSong.name;
-  renderModalSections();
-  songModal.hidden = false;
-  if (isDesktopViewport()) setTimeout(() => songNameInput.focus(), 0);
-}
-function closeSongEditor() { songModal.hidden = true; editorSong = null; }
-function collectModalSections() {
-  if (!editorSong) return;
-  sectionEditorList.querySelectorAll(".songSectionEditor").forEach(card => {
-    const index = Number(card.dataset.index);
-    if (!editorSong.sections[index]) return;
-    const name = card.querySelector("[data-section-name]");
-    const treble = card.querySelector("[data-modal-part='treble']");
-    const bass = card.querySelector("[data-modal-part='bass']");
-    editorSong.sections[index].name = name ? name.value.trim() : "";
-    editorSong.sections[index].treblePattern = treble ? treble.value : "";
-    editorSong.sections[index].bassPattern = bass ? bass.value : "";
-  });
-}
-function renderModalSections() {
-  sectionEditorList.innerHTML = "";
-  editorSong.sections.forEach((section, index) => {
-    const card = document.createElement("section");
-    card.className = "songSectionEditor";
-    card.dataset.index = String(index);
-    const head = document.createElement("div");
-    head.className = "sectionEditorHead";
-    const title = document.createElement("div");
-    title.className = "modalSectionTitle";
-    title.textContent = "Section " + (index + 1);
-    const name = document.createElement("input");
-    name.type = "text";
-    name.placeholder = "Optional section title";
-    name.value = section.name || "";
-    name.dataset.sectionName = "true";
-    const actions = document.createElement("div");
-    actions.className = "sectionActions";
-    [["up", "Up"], ["down", "Down"], ["duplicate", "Duplicate"], ["delete", "Delete"]].forEach(([action, label]) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = action === "delete" ? "danger" : "secondary";
-      button.dataset.sectionAction = action;
-      button.textContent = label;
-      if ((action === "up" && index === 0) || (action === "down" && index === editorSong.sections.length - 1)) button.disabled = true;
-      actions.appendChild(button);
-    });
-    head.append(title, name, actions);
-    const parts = document.createElement("div");
-    parts.className = "modalParts";
-    parts.append(createModalPart(section, index, "treble"), createModalPart(section, index, "bass"));
-    const metric = document.createElement("div");
-    metric.className = "sectionMetric modalMetric";
-    const alignment = sectionAlignment(section);
-    metric.textContent = alignment.text;
-    const pad = document.createElement("button");
-    pad.type = "button";
-    pad.className = "ghost";
-    pad.dataset.sectionAction = "pad";
-    pad.textContent = "Pad Bass Section";
-    pad.hidden = !(alignment.bassSilentBeats > 0 && !alignment.overflow);
-    card.append(head, parts, metric, pad);
-    sectionEditorList.appendChild(card);
-  });
-}
-function createModalPart(section, index, part) {
-  const wrap = document.createElement("div");
-  wrap.className = "modalPartEditor";
-  const label = document.createElement("label");
-  label.textContent = partLabel(part);
-  const textarea = document.createElement("textarea");
-  textarea.value = section[patternKey(part)] || "";
-  textarea.spellcheck = false;
-  textarea.dataset.modalPart = part;
-  textarea.dataset.sectionIndex = String(index);
-  wrap.append(label, textarea);
-  return wrap;
-}
-function handleModalSectionAction(button) {
-  collectModalSections();
-  const card = button.closest(".songSectionEditor");
-  const index = card ? Number(card.dataset.index) : -1;
-  const action = button.dataset.sectionAction;
-  if (action === "up" && index > 0) [editorSong.sections[index - 1], editorSong.sections[index]] = [editorSong.sections[index], editorSong.sections[index - 1]];
-  if (action === "down" && index < editorSong.sections.length - 1) [editorSong.sections[index + 1], editorSong.sections[index]] = [editorSong.sections[index], editorSong.sections[index + 1]];
-  if (action === "duplicate" && editorSong.sections[index]) editorSong.sections.splice(index + 1, 0, makeSection({ ...editorSong.sections[index], id: "" }));
-  if (action === "delete") {
-    if (editorSong.sections.length <= 1) { window.alert("A song needs at least one section."); return; }
-    editorSong.sections.splice(index, 1);
-  }
-  if (action === "pad" && editorSong.sections[index]) {
-    const info = sectionAlignment(editorSong.sections[index]);
-    if (!info.bassSilentBeats || info.overflow) {
-      if (info.overflow) window.alert("Bass exceeds Treble by " + beatsText(info.bassOverflowBeats) + ". Remove Bass words or adjust REST tokens manually.");
-      return;
-    }
-    const padding = restPaddingForBeats(info.bassSilentBeats);
-    if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST tokens can only pad whole beats."); return; }
-    editorSong.sections[index].bassPattern = appendTokens(editorSong.sections[index].bassPattern, padding);
-  }
-  renderModalSections();
-}
-function saveSongFromEditor() {
-  collectModalSections();
-  const name = songNameInput.value.trim();
-  if (!name) { window.alert("Enter a song name."); return; }
-  for (let i = 0; i < editorSong.sections.length; i++) {
-    const section = editorSong.sections[i];
-    const trebleBad = invalidPatternTokens(section.treblePattern);
-    const bassBad = invalidPatternTokens(section.bassPattern);
-    if (trebleBad.length || bassBad.length) {
-      window.alert("Section " + (i + 1) + " has unsupported tokens: " + [...new Set([...trebleBad, ...bassBad])].join(", "));
-      return;
-    }
-  }
-  const songs = readSongLibrary();
-  let song = currentSongId && songs.find(item => item.id === currentSongId && editorSong.id === currentSongId);
-  if (!song && editorSong.id) song = songs.find(item => item.id === editorSong.id);
-  if (!song) { song = { id: "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), name, sections: [] }; songs.push(song); }
-  song.name = name;
-  song.sections = editorSong.sections.map(section => makeSection(section));
-  writeSongLibrary(songs);
-  currentSongId = song.id;
-  currentSong = normalizeSong(song);
-  closeSongEditor();
-  refreshSavedSongs(song.id);
-  renderWorkspace();
-  resetReference();
-}
-function deleteSelectedSong() {
-  const song = findSong();
-  if (!song) { window.alert("Select a song to delete."); return; }
-  if (!window.confirm("Delete saved song: " + song.name + "?")) return;
-  writeSongLibrary(readSongLibrary().filter(item => item.id !== song.id));
-  currentSongId = "";
-  currentSong = cloneSong(defaultSong);
-  refreshSavedSongs("");
-  renderWorkspace();
-  resetReference();
-}
-
 function ensureAudioContext() { const AudioCtor = window.AudioContext || window.webkitAudioContext; if (!AudioCtor) return null; if (!audioContext) audioContext = new AudioCtor(); if (audioContext.state === "suspended") audioContext.resume(); return audioContext; }
 function playMetronomeClick(strong = false) { if (!metronomeOn) return; const context = ensureAudioContext(); if (!context) return; const now = context.currentTime; const volume = Math.max(0, Math.min(1, Number(metronomeVolume.value) || 0)); const gain = context.createGain(); gain.gain.setValueAtTime(0.0001, now); gain.gain.exponentialRampToValueAtTime((strong ? .12 : .075) * volume, now + .004); gain.gain.exponentialRampToValueAtTime(0.0001, now + (strong ? .075 : .055)); gain.connect(context.destination); const osc = context.createOscillator(); osc.type = strong ? "triangle" : "sine"; osc.frequency.setValueAtTime(strong ? 520 : 920, now); osc.frequency.exponentialRampToValueAtTime(strong ? 360 : 760, now + .045); osc.connect(gain); osc.start(now); osc.stop(now + .08); }
 function triggerMetronome(nowBeat) { if (!metronomeOn || !running) return; const beatIndex = Math.floor(nowBeat); if (beatIndex < 0 || beatIndex > Math.ceil(totalBeats)) return; if (beatIndex === lastMetronomeBeat) return; lastMetronomeBeat = beatIndex; const subdivision = Math.max(1, Number(metronomeSubdivision.value) || 1); if (beatIndex % subdivision !== 0) return; try { playMetronomeClick(beatIndex % 4 === 0); } catch (error) { console.warn("Metronome click skipped", error); } }
@@ -1059,7 +1081,7 @@ function syncFullscreenState() { if (!document.fullscreenElement && app.classLis
 function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
 
 function requiredElements() {
-  return { app, savedSongsSelect, newSongBtn, editSongBtn, deleteSongBtn, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, sectionIndicatorEl, loopStatusEl, playTimerEl, songModal, songNameInput, sectionEditorList, addSectionBtn, saveSongBtn, cancelSongBtn, cancelSongTopBtn };
+  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
 function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
 function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
@@ -1072,10 +1094,13 @@ function initializeApp() {
   renderInsertButtons();
   renderDefinitions();
   renderWorkspace();
-  bindEvent(savedSongsSelect, "change", () => { savedSongsSelect.value ? loadSong(savedSongsSelect.value) : clearSelectedSong(); }, "saved song dropdown");
-  bindEvent(newSongBtn, "click", () => openSongEditor(null), "new song");
-  bindEvent(editSongBtn, "click", () => { const song = findSong(); if (!song) { window.alert("Select a song to edit."); return; } openSongEditor(song); }, "edit song");
+  bindEvent(loadSongBtn, "click", loadSelectedSong, "load song");
+  bindEvent(savedSongsSelect, "change", () => updateSongStatus(), "saved song dropdown");
+  bindEvent(newSongBtn, "click", () => clearSelectedSong(), "new song");
+  bindEvent(saveSongBtn, "click", saveCurrentSong, "save song");
+  bindEvent(saveAsSongBtn, "click", saveCurrentSongAs, "save as song");
   bindEvent(deleteSongBtn, "click", deleteSelectedSong, "delete song");
+  bindEvent(songNameInput, "input", updateSongNameFromInput, "song name");
   bindEvent(bpm, "input", () => applyBpm(bpm.value, { restart: true }), "BPM slider");
   bindEvent(bpmNumber, "input", () => { bpm.value = String(clampBpm(bpmNumber.value)); draw(pauseElapsed); }, "BPM number input");
   bindEvent(bpmNumber, "change", () => applyBpm(bpmNumber.value, { restart: true }), "BPM number change");
@@ -1096,8 +1121,11 @@ function initializeApp() {
   document.addEventListener("keyup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("mouseup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) { setActiveEditor(event.target); updatePatternFromEditor(event.target); } });
+  document.addEventListener("input", event => { if (event.target.matches && event.target.matches("[data-section-name]")) updateSectionNameFromInput(event.target); });
   document.addEventListener("scroll", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) syncLineNumbers(event.target); }, true);
   document.addEventListener("click", event => {
+    const sectionAction = event.target.closest("[data-section-action]");
+    if (sectionAction) { handleInlineSectionAction(sectionAction); return; }
     const tokenButton = event.target.closest("[data-insert-token]");
     if (tokenButton && !insertButtonsEl.contains(tokenButton)) {
       if (tokenButton.dataset.insertPart && tokenButton.dataset.insertSection) insertTokenForPart(tokenButton.dataset.insertToken, tokenButton.dataset.insertPart, tokenButton.dataset.insertSection);
@@ -1109,13 +1137,11 @@ function initializeApp() {
     const padButton = event.target.closest("[data-pad-section]");
     if (padButton) padSection(Number(padButton.dataset.padSection));
   });
-  bindEvent(addSectionBtn, "click", () => { collectModalSections(); editorSong.sections.push(makeSection()); renderModalSections(); }, "add section");
-  bindEvent(sectionEditorList, "click", event => { const button = event.target.closest("[data-section-action]"); if (button) handleModalSectionAction(button); }, "modal section actions");
-  bindEvent(saveSongBtn, "click", saveSongFromEditor, "save song");
-  bindEvent(cancelSongBtn, "click", closeSongEditor, "cancel song");
-  bindEvent(cancelSongTopBtn, "click", closeSongEditor, "close song editor");
-  bindEvent(songModal, "click", event => { if (event.target === songModal) closeSongEditor(); }, "song modal backdrop");
-  document.addEventListener("keydown", event => { if (event.key === "Escape" && songModal && !songModal.hidden) closeSongEditor(); });
+  window.addEventListener("beforeunload", event => {
+    if (!isDirty) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
   document.addEventListener("fullscreenchange", syncFullscreenState);
   window.addEventListener("resize", () => draw(elapsed()));
   window.addEventListener("orientationchange", () => setTimeout(() => draw(elapsed()), 120));
