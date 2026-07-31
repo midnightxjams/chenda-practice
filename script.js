@@ -1,5 +1,4 @@
 const THAKAA_INTERNAL_PAUSE_BEATS = 0.5;
-const THAKAA_TRAILING_GAP_BEATS = 1.0;
 const THAKKA_INTERNAL_PAUSE_BEATS = 0.5;
 const THAKKA_TRAILING_GAP_BEATS = 0;
 // Adjust this interval after confirming which Treble/Chenda beats align with Bass counts 1, 2, and 3.
@@ -28,10 +27,10 @@ const WORD_DEFINITIONS = {
   THAKAA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1 + THAKAA_INTERNAL_PAUSE_BEATS, accented: false }],
     durationBeats: 2 + THAKAA_INTERNAL_PAUSE_BEATS,
-    trailingGapBeats: THAKAA_TRAILING_GAP_BEATS,
+    trailingGapBeats: 0,
     colorClass: "word-thakaa",
     color: { fill: "#60d67f", glow: "rgba(96,214,127,.42)", text: "#07100a" },
-    description: "Right, 0.5-beat pause, Left, then 1 full silent beat before the next word."
+    description: "Right, slight pause, then Left."
   },
   THAKKA: {
     hits: [{ hand: "R", offsetBeats: 0, accented: false }, { hand: "L", offsetBeats: 1 + THAKKA_INTERNAL_PAUSE_BEATS, accented: false }],
