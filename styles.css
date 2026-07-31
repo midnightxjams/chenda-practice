@@ -59,7 +59,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .insertGroups{display:grid;gap:8px}
 .insertGroup{display:grid;grid-template-columns:112px minmax(0,1fr);gap:8px;align-items:center}
 .insertButtons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
-.restInsertButtons{grid-template-columns:repeat(3,minmax(0,1fr))}
+.restInsertButtons{grid-template-columns:repeat(4,minmax(0,1fr))}
 .insertButton{min-height:38px;padding:0 8px}
 .practiceStatus{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .practiceStatus>span,.statusCluster{border:1px solid rgba(255,248,236,.18);border-radius:8px;background:rgba(9,10,14,.5);padding:8px 10px;color:rgba(255,248,236,.86);font-weight:950;text-align:center}
@@ -113,8 +113,9 @@ canvas{display:block;width:100%;height:520px}
 .lineNumbers{margin:0;padding:10px 8px;text-align:right;color:rgba(255,248,236,.38);background:rgba(255,255,255,.035);border-right:1px solid rgba(255,248,236,.1);font:inherit;line-height:1.45;user-select:none;overflow:hidden}
 .codeEditor textarea{border:0;border-radius:0;background:transparent;min-height:116px;resize:vertical}
 .codeEditor textarea:focus{outline:0;box-shadow:inset 0 0 0 2px rgba(66,200,200,.32)}
-.localRestButtons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:0 10px 10px}
-.localRestButtons.withPreferredTokens{grid-template-columns:repeat(4,minmax(0,1fr))}
+.localRestTools{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;margin:0 10px 10px;border:1px solid rgba(255,248,236,.1);border-radius:8px;background:rgba(9,10,14,.24);padding:8px}
+.localRestTools>span{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:850;white-space:nowrap}
+.localRestButtons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
 .localRestButtons button{min-height:34px;font-size:.82rem}
 .lineAnalysis{display:grid;gap:6px;margin:0 10px 10px}
 .lineRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border-top:1px solid rgba(255,248,236,.08);padding-top:6px;color:rgba(255,248,236,.7);font-size:.82rem;line-height:1.35}
@@ -225,6 +226,7 @@ body.mobile-practice-focus-mode .fullscreenControls button,body.mobile-practice-
   .fullscreenControls{left:10px;right:10px;top:10px;grid-template-columns:1fr 1fr 1fr}
   .lineRow{grid-template-columns:1fr}
   .padLine{width:100%;min-height:40px}
+  .localRestTools{grid-template-columns:1fr}
   .localRestButtons button{min-height:42px}
 }
 @media(max-width:430px){

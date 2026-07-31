@@ -6,6 +6,7 @@ const THAKKA_TRAILING_GAP_BEATS = 0;
 const COUNT_123_INTERVAL_BEATS = 0.75;
 const COUNT_123_TRAILING_GAP_BEATS = 0;
 const THA_PICKUP_GAP_BEATS = 1.0;
+const BEAT_TOLERANCE = 0.001;
 
 const WORD_DEFINITIONS = {
   THA: {
@@ -63,6 +64,7 @@ const WORD_DEFINITIONS = {
 };
 
 const REST_DEFINITIONS = {
+  "REST0.5": { durationBeats: 0.5, description: "One-half silent beat" },
   REST1: { durationBeats: 1, description: "One silent beat" },
   REST2: { durationBeats: 2, description: "Two silent beats" },
   REST4: { durationBeats: 4, description: "Four silent beats" }
@@ -70,7 +72,7 @@ const REST_DEFINITIONS = {
 
 const DEFAULT_SECTION_COUNT = 4;
 const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA", "123"];
-const DISPLAY_REST_ORDER = ["REST1", "REST2", "REST4"];
+const DISPLAY_REST_ORDER = ["REST0.5", "REST1", "REST2", "REST4"];
 const LEGACY_WORD_ALIASES = { TA: "THA" };
 const SONG_LIBRARY_KEY = "chendaPracticeSongs";
 const INSTRUMENT_VIEW_KEY = "chendaPracticeInstrumentView";
@@ -176,7 +178,7 @@ function tokenDef(token) { return wordDef(token) || restDef(token); }
 function supportedWords() { return DISPLAY_WORD_ORDER.filter(word => wordDef(word)); }
 function supportedRests() { return DISPLAY_REST_ORDER.filter(rest => restDef(rest)); }
 function normalizeToken(token) { return LEGACY_WORD_ALIASES[token] || token; }
-function tokenize(text) { return (String(text || "").toUpperCase().match(/[A-Z0-9]+/g) || []).map(normalizeToken); }
+function tokenize(text) { return (String(text || "").toUpperCase().match(/[A-Z0-9.]+/g) || []).map(normalizeToken); }
 function splitPatternLines(text) { return String(text || "").replace(/\r\n?/g, "\n").split("\n"); }
 function normalizePatternText(text) { return splitPatternLines(text).map(line => tokenize(line).filter(token => tokenDef(token)).join(" ")).join("\n"); }
 function invalidPatternTokens(text) { return [...new Set(tokenize(text).filter(token => !tokenDef(token)))]; }
@@ -368,7 +370,12 @@ function formatTime(ms) { const total = Math.max(0, Math.floor(ms / 1000)); retu
 function updatePlayTimer(now) { playTimerEl.textContent = formatTime(now); }
 function isInfiniteLoop() { return loopCount === Infinity; }
 function loopDisplay() { return isInfiniteLoop() ? "\u221e" : "x" + loopCount; }
-function beatsText(value) { const text = Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); return text + " " + (Math.abs(value - 1) < .001 ? "beat" : "beats"); }
+function beatsText(value) {
+  const roundedHalf = Math.round(value * 2) / 2;
+  const normalized = Math.abs(value - roundedHalf) < BEAT_TOLERANCE ? roundedHalf : value;
+  const text = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
+  return text + " " + (Math.abs(normalized - 1) < BEAT_TOLERANCE ? "beat" : "beats");
+}
 
 function firstTokenAfterLine(pattern, lineIndex) {
   const lines = splitPatternLines(pattern);
@@ -413,9 +420,9 @@ function lineReferenceInfo(section, lineIndex) {
 function lineAlignment(section, lineIndex) {
   const info = lineReferenceInfo(section, lineIndex);
   const diff = info.bass - info.treble;
-  const bassSilentBeats = info.referencePart === "treble" && diff < 0 ? Math.abs(diff) : 0;
-  const bassOverflowBeats = info.referencePart === "treble" && diff > 0 ? diff : 0;
-  const aligned = info.duration === 0 || (info.referencePart === "bass" && !info.trebleHasContent) || Math.abs(diff) < .001;
+  const bassSilentBeats = info.referencePart === "treble" && diff < -BEAT_TOLERANCE ? Math.abs(diff) : 0;
+  const bassOverflowBeats = info.referencePart === "treble" && diff > BEAT_TOLERANCE ? diff : 0;
+  const aligned = info.duration === 0 || (info.referencePart === "bass" && !info.trebleHasContent) || Math.abs(diff) < BEAT_TOLERANCE;
   let status = info.invalidTokens.length ? "Unsupported tokens: " + info.invalidTokens.join(", ") : "Blank line skipped";
   if (info.referencePart === "bass") status = "Bass reference";
   if (info.referencePart === "treble") status = aligned ? "Aligned to Treble" : bassOverflowBeats ? "Bass exceeds Treble by " + beatsText(bassOverflowBeats) : "Bass silent for final " + beatsText(bassSilentBeats);
@@ -430,17 +437,20 @@ function sectionAlignment(section) {
   const bassSilentBeats = lines.reduce((sum, line) => sum + line.bassSilentBeats, 0);
   const bassOverflowBeats = lines.reduce((sum, line) => sum + line.bassOverflowBeats, 0);
   const overflowLines = lines.filter(line => line.overflow).length;
-  const aligned = !bassSilentBeats && !bassOverflowBeats;
+  const aligned = bassSilentBeats < BEAT_TOLERANCE && bassOverflowBeats < BEAT_TOLERANCE;
   const text = aligned ? "Manual sync aligned: " + beatsText(duration) : bassOverflowBeats ? "Manual sync: Bass exceeds Treble on " + overflowLines + " " + (overflowLines === 1 ? "line" : "lines") + " by " + beatsText(bassOverflowBeats) : "Manual sync: Bass silent for " + beatsText(bassSilentBeats);
   return { treble, bass, duration, aligned, shorter: bassSilentBeats ? "bass" : "", overflow: bassOverflowBeats > 0, bassSilentBeats, bassOverflowBeats, text, lines };
 }
 function restPaddingForBeats(beats) {
-  const rounded = Math.round(beats);
-  if (Math.abs(beats - rounded) > .001) return null;
+  const rounded = Math.round(beats * 2) / 2;
+  if (Math.abs(beats - rounded) > BEAT_TOLERANCE) return null;
   const tokens = [];
   let remaining = rounded;
-  [["REST4", 4], ["REST2", 2], ["REST1", 1]].forEach(([token, size]) => {
-    while (remaining >= size) { tokens.push(token); remaining -= size; }
+  [["REST4", 4], ["REST2", 2], ["REST1", 1], ["REST0.5", 0.5]].forEach(([token, size]) => {
+    while (remaining + BEAT_TOLERANCE >= size) {
+      tokens.push(token);
+      remaining = Math.round((remaining - size) * 2) / 2;
+    }
   });
   return tokens;
 }
@@ -864,34 +874,26 @@ function renderPartEditors(part, container) {
     textarea.setAttribute("aria-label", partLabel(part) + " section " + (index + 1) + " pattern");
     numbers.textContent = lineNumberText(textarea.value);
     editorShell.append(numbers, textarea);
+    const restTools = document.createElement("div");
+    restTools.className = "localRestTools";
+    const restToolsLabel = document.createElement("span");
+    restToolsLabel.textContent = "Line Spacing Tools";
     const restButtons = document.createElement("div");
-    const preferredTokens = supportedWords().filter(word => WORD_DEFINITIONS[word].preferredPart === part);
-    restButtons.className = "localRestButtons" + (preferredTokens.length ? " withPreferredTokens" : "");
-    preferredTokens.forEach(word => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "insertButton " + WORD_DEFINITIONS[word].colorClass;
-      button.dataset.insertToken = word;
-      button.dataset.insertPart = part;
-      button.dataset.insertSection = String(index);
-      button.textContent = word;
-      restButtons.appendChild(button);
-    });
+    restButtons.className = "localRestButtons";
     supportedRests().forEach(rest => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ghost";
       button.dataset.insertToken = rest;
-      button.dataset.insertPart = part;
-      button.dataset.insertSection = String(index);
       button.textContent = "Rest " + REST_DEFINITIONS[rest].durationBeats;
       restButtons.appendChild(button);
     });
+    restTools.append(restToolsLabel, restButtons);
     const lineAnalysis = document.createElement("div");
     lineAnalysis.className = "lineAnalysis";
     lineAnalysis.dataset.lineAnalysisFor = String(index);
     lineAnalysis.dataset.lineAnalysisPart = part;
-    card.append(head, editorShell, restButtons, lineAnalysis);
+    card.append(head, editorShell, restTools, lineAnalysis);
     container.appendChild(card);
   });
 }
@@ -1025,7 +1027,7 @@ function padLine(sectionIndex, lineIndex) {
     return;
   }
   const padding = restPaddingForBeats(info.bassSilentBeats);
-  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
+  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST0.5, REST1, REST2, and REST4 can only pad half-beat increments."); return; }
   const key = "bassPattern";
   const lines = splitPatternLines(section[key]);
   while (lines.length <= lineIndex) lines.push("");
@@ -1064,7 +1066,7 @@ function padSection(index) {
     return;
   }
   const padding = restPaddingForBeats(info.bassSilentBeats);
-  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST1, REST2, and REST4 can only pad whole beats."); return; }
+  if (!padding) { window.alert("Bass is silent for " + beatsText(info.bassSilentBeats) + ". REST0.5, REST1, REST2, and REST4 can only pad half-beat increments."); return; }
   section.bassPattern = appendTokens(section.bassPattern, padding);
   markDirty();
   renderWorkspace();
