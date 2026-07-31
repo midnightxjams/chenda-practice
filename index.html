@@ -67,6 +67,15 @@
     <span id="playTimer">00:00</span>
   </section>
 
+  <section class="viewBar" aria-label="Instrument view">
+    <span>View</span>
+    <div class="viewChoices" role="group" aria-label="Instrument view">
+      <button type="button" class="viewChoice active" id="viewBoth" data-view="both" aria-pressed="true">Both</button>
+      <button type="button" class="viewChoice" id="viewTreble" data-view="treble" aria-pressed="false">Treble</button>
+      <button type="button" class="viewChoice" id="viewBass" data-view="bass" aria-pressed="false">Bass</button>
+    </div>
+  </section>
+
   <section class="partGrid">
     <article class="partPanel treblePanel">
       <header class="partHead">
@@ -132,10 +141,25 @@
 
   <footer class="appFooter">Chenda Practice Trainer v0.1.0</footer>
 
+  <div class="fullscreenChoice" id="fullscreenChoice" hidden>
+    <div class="fullscreenChoicePanel">
+      <div>Fullscreen instrument</div>
+      <button type="button" id="fullscreenTreble">Fullscreen Treble</button>
+      <button type="button" id="fullscreenBass">Fullscreen Bass</button>
+      <button type="button" class="secondary" id="fullscreenCancel">Cancel</button>
+    </div>
+  </div>
+
   <div class="fullscreenControls" id="fullscreenControls">
+    <div class="fullscreenInfo">
+      <strong id="fullscreenInstrumentName">Practice</strong>
+      <span id="fullscreenStatus">BPM 120 | Loop: 0 / x4 | 00:00</span>
+    </div>
+    <button id="fullscreenStart" type="button">Start</button>
     <button class="secondary" id="fullscreenStop" type="button">Stop</button>
     <button class="accent" id="fullscreenRestart" type="button">Restart</button>
-    <button id="exitFullscreen" type="button">Exit</button>
+    <button class="toggle" id="fullscreenMetronome" type="button" aria-pressed="false">Metro Off</button>
+    <button id="exitFullscreen" type="button" aria-label="Exit fullscreen practice">Exit Fullscreen</button>
   </div>
 </main>
 <script src="script.js"></script>

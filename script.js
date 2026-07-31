@@ -73,6 +73,8 @@ const DISPLAY_WORD_ORDER = ["THA", "THAKA", "THAKAA", "THAKKA", "THAKITA", "123"
 const DISPLAY_REST_ORDER = ["REST1", "REST2", "REST4"];
 const LEGACY_WORD_ALIASES = { TA: "THA" };
 const SONG_LIBRARY_KEY = "chendaPracticeSongs";
+const INSTRUMENT_VIEW_KEY = "chendaPracticeInstrumentView";
+const FULLSCREEN_INSTRUMENT_KEY = "chendaPracticeFullscreenInstrument";
 const PARTS = ["treble", "bass"];
 const countInBeats = 4;
 const prepGapBeats = 4;
@@ -108,9 +110,18 @@ const startBtn = $("start");
 const stopBtn = $("stop");
 const restartBtn = $("restart");
 const fullscreenBtn = $("fullscreen");
+const viewButtons = Array.from(document.querySelectorAll("[data-view]"));
+const fullscreenChoice = $("fullscreenChoice");
+const fullscreenTrebleBtn = $("fullscreenTreble");
+const fullscreenBassBtn = $("fullscreenBass");
+const fullscreenCancelBtn = $("fullscreenCancel");
+const fullscreenStartBtn = $("fullscreenStart");
 const fullscreenStopBtn = $("fullscreenStop");
 const fullscreenRestartBtn = $("fullscreenRestart");
+const fullscreenMetronomeBtn = $("fullscreenMetronome");
 const exitFullscreenBtn = $("exitFullscreen");
+const fullscreenInstrumentName = $("fullscreenInstrumentName");
+const fullscreenStatus = $("fullscreenStatus");
 const stateEl = $("state");
 const songTitleEl = $("songTitle");
 const activeEditorLabel = $("activeEditorLabel");
@@ -150,6 +161,10 @@ let metronomeOn = false;
 let lastMetronomeBeat = -1;
 let audioContext = null;
 let appInitialized = false;
+let instrumentView = localStorage.getItem(INSTRUMENT_VIEW_KEY) || "both";
+let fullscreenInstrument = localStorage.getItem(FULLSCREEN_INSTRUMENT_KEY) || "treble";
+let preFullscreenScroll = { x: 0, y: 0 };
+let resizeTimer = 0;
 const editorCursor = new WeakMap();
 
 function cloneSong(song) { return JSON.parse(JSON.stringify(song)); }
@@ -164,6 +179,8 @@ function splitPatternLines(text) { return String(text || "").replace(/\r\n?/g, "
 function normalizePatternText(text) { return splitPatternLines(text).map(line => tokenize(line).filter(token => tokenDef(token)).join(" ")).join("\n"); }
 function invalidPatternTokens(text) { return [...new Set(tokenize(text).filter(token => !tokenDef(token)))]; }
 function lineTokens(pattern, lineIndex) { return tokenize(splitPatternLines(pattern)[lineIndex] || "").filter(token => tokenDef(token)); }
+function lineInvalidTokens(pattern, lineIndex) { return tokenize(splitPatternLines(pattern)[lineIndex] || "").filter(token => !tokenDef(token)); }
+function lineHasPlayableContent(pattern, lineIndex) { return lineTokens(pattern, lineIndex).length > 0; }
 function patternLineCount(section) { return Math.max(1, splitPatternLines(section.treblePattern).length, splitPatternLines(section.bassPattern).length); }
 function partLabel(part) { return part === "bass" ? "Bass" : "Treble"; }
 function patternKey(part) { return part === "bass" ? "bassPattern" : "treblePattern"; }
@@ -374,16 +391,33 @@ function measureTokens(tokens, nextLineFirstToken = "") {
   });
   return beat;
 }
+function getReferenceDuration(trebleDuration, bassDuration, trebleHasContent, bassHasContent) {
+  if (trebleHasContent) return trebleDuration;
+  if (bassHasContent) return bassDuration;
+  return 0;
+}
+function lineReferenceInfo(section, lineIndex) {
+  const trebleTokens = lineTokens(section.treblePattern, lineIndex);
+  const bassTokens = lineTokens(section.bassPattern, lineIndex);
+  const invalidTokens = [...new Set([...lineInvalidTokens(section.treblePattern, lineIndex), ...lineInvalidTokens(section.bassPattern, lineIndex)])];
+  const trebleHasContent = trebleTokens.length > 0;
+  const bassHasContent = bassTokens.length > 0;
+  const treble = measureTokens(trebleTokens, firstTokenAfterLine(section.treblePattern, lineIndex + 1));
+  const bass = measureTokens(bassTokens, firstTokenAfterLine(section.bassPattern, lineIndex + 1));
+  const duration = getReferenceDuration(treble, bass, trebleHasContent, bassHasContent);
+  const referencePart = trebleHasContent ? "treble" : bassHasContent ? "bass" : "";
+  return { treble, bass, duration, referencePart, trebleHasContent, bassHasContent, invalidTokens };
+}
 function lineAlignment(section, lineIndex) {
-  const treble = measureTokens(lineTokens(section.treblePattern, lineIndex), firstTokenAfterLine(section.treblePattern, lineIndex + 1));
-  const bass = measureTokens(lineTokens(section.bassPattern, lineIndex), firstTokenAfterLine(section.bassPattern, lineIndex + 1));
-  const duration = treble;
-  const diff = bass - treble;
-  const aligned = Math.abs(diff) < .001;
-  const bassSilentBeats = diff < 0 ? Math.abs(diff) : 0;
-  const bassOverflowBeats = diff > 0 ? diff : 0;
-  const status = aligned ? "Aligned to Treble" : bassOverflowBeats ? "Bass exceeds Treble by " + beatsText(bassOverflowBeats) : "Bass silent for final " + beatsText(bassSilentBeats);
-  return { line: lineIndex + 1, treble, bass, duration, aligned, shorter: bassSilentBeats ? "bass" : "", overflow: bassOverflowBeats > 0, bassSilentBeats, bassOverflowBeats, text: "Line " + (lineIndex + 1) + " - Treble duration: " + beatsText(treble) + " - Bass duration: " + beatsText(bass) + " - " + status };
+  const info = lineReferenceInfo(section, lineIndex);
+  const diff = info.bass - info.treble;
+  const bassSilentBeats = info.referencePart === "treble" && diff < 0 ? Math.abs(diff) : 0;
+  const bassOverflowBeats = info.referencePart === "treble" && diff > 0 ? diff : 0;
+  const aligned = info.duration === 0 || (info.referencePart === "bass" && !info.trebleHasContent) || Math.abs(diff) < .001;
+  let status = info.invalidTokens.length ? "Unsupported tokens: " + info.invalidTokens.join(", ") : "Blank line skipped";
+  if (info.referencePart === "bass") status = "Bass reference";
+  if (info.referencePart === "treble") status = aligned ? "Aligned to Treble" : bassOverflowBeats ? "Bass exceeds Treble by " + beatsText(bassOverflowBeats) : "Bass silent for final " + beatsText(bassSilentBeats);
+  return { line: lineIndex + 1, treble: info.treble, bass: info.bass, duration: info.duration, referencePart: info.referencePart, trebleHasContent: info.trebleHasContent, bassHasContent: info.bassHasContent, aligned, shorter: bassSilentBeats ? "bass" : "", overflow: bassOverflowBeats > 0, bassSilentBeats, bassOverflowBeats, text: "Line " + (lineIndex + 1) + " - Treble duration: " + beatsText(info.treble) + " - Bass duration: " + beatsText(info.bass) + " - " + status };
 }
 function sectionLineAlignments(section) { return Array.from({ length: patternLineCount(section) }, (_, index) => lineAlignment(section, index)); }
 function sectionAlignment(section) {
@@ -453,22 +487,26 @@ function buildTimeline() {
 }
 function appendSongLoop() {
   const loopNumber = builtLoopCount + 1;
+  const loopStart = totalBeats;
   currentSong.sections.forEach((section, sectionIndex) => {
     const sectionStart = totalBeats;
     const lineCount = patternLineCount(section);
     let lineStart = sectionStart;
     for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+      const reference = lineReferenceInfo(section, lineIndex);
+      if (reference.duration <= 0) continue;
       const trebleDuration = schedulePartLine(section, "treble", lineIndex, lineStart, loopNumber, sectionIndex + 1);
       const bassDuration = schedulePartLine(section, "bass", lineIndex, lineStart, loopNumber, sectionIndex + 1);
-      const lineDuration = trebleDuration;
-      lineBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", lineNumber: lineIndex + 1, startBeat: lineStart, endBeat: lineStart + lineDuration });
+      const lineDuration = reference.duration;
+      lineBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", lineNumber: lineIndex + 1, referencePart: reference.referencePart, startBeat: lineStart, endBeat: lineStart + lineDuration, trebleDuration, bassDuration });
       lineStart += lineDuration;
     }
-    sectionBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", startBeat: sectionStart, endBeat: lineStart });
+    if (lineStart > sectionStart) sectionBoundaries.push({ loopNumber, sectionNumber: sectionIndex + 1, sectionName: section.name || "", startBeat: sectionStart, endBeat: lineStart });
     totalBeats = lineStart;
   });
   loopEndBeats.push(totalBeats);
   builtLoopCount++;
+  return totalBeats - loopStart;
 }
 function schedulePartLine(section, part, lineIndex, lineStart, loopNumber, sectionNumber) {
   const tokens = lineTokens(section[patternKey(part)], lineIndex);
@@ -489,7 +527,7 @@ function schedulePartLine(section, part, lineIndex, lineStart, loopNumber, secti
   });
   return beat - lineStart;
 }
-function ensureInfiniteTimeline(nowBeat) { if (!isInfiniteLoop()) return; while (totalBeats - nowBeat < 32) appendSongLoop(); }
+function ensureInfiniteTimeline(nowBeat) { if (!isInfiniteLoop()) return; while (totalBeats - nowBeat < 32) { if (appendSongLoop() <= 0) break; } }
 function updateLoopCompletion(nowBeat) { while (completedLoops < loopEndBeats.length && nowBeat >= loopEndBeats[completedLoops]) completedLoops++; }
 function currentSection(nowBeat) {
   if (!sectionBoundaries.length) return null;
@@ -548,31 +586,36 @@ function revealActiveLineInsideEditor(row, shouldReveal) {
 
 function resizeCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return false;
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
   const width = Math.max(320, Math.round(rect.width * ratio));
   const height = Math.max(360, Math.round(rect.height * ratio));
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  return true;
 }
 function laneXForHand(hand, leftX, rightX) { return hand === "R" ? rightX : leftX; }
 function draw(now) {
   const nowBeat = now / beatMs();
   updatePlayTimer(now);
   updateStatus(nowBeat);
+  updateFullscreenCompactStatus();
   PARTS.forEach(part => drawPart(part, nowBeat));
 }
 function drawPart(part, nowBeat) {
   const target = canvases[part];
   const canvas = target.canvas;
   const ctx = target.ctx;
-  resizeCanvas(canvas);
+  if (!resizeCanvas(canvas)) return;
   const w = canvas.width, h = canvas.height;
   const full = app.classList.contains("practiceFullscreen") && window.innerWidth > 760;
+  const mobileFocus = document.body.classList.contains("mobile-practice-focus-mode") || document.body.classList.contains("mobile-practice-fullscreen");
   const visualScale = full ? 1.35 : 1;
-  const hitY = h - (full ? 128 : 104);
-  const topPad = full ? 92 : 72;
+  const focusScale = mobileFocus ? 1.22 : visualScale;
+  const hitY = h - (mobileFocus ? 112 : full ? 128 : 104);
+  const topPad = mobileFocus ? 78 : full ? 92 : 72;
   const leadBeats = 8;
-  const laneW = full ? Math.min(180, w * .32) : Math.min(138, w * .28);
-  const gap = full ? Math.max(10, Math.min(18, w * .035)) : Math.max(8, Math.min(12, w * .03));
+  const laneW = mobileFocus ? Math.min(168, w * .33) : full ? Math.min(180, w * .32) : Math.min(138, w * .28);
+  const gap = mobileFocus ? Math.max(10, Math.min(16, w * .035)) : full ? Math.max(10, Math.min(18, w * .035)) : Math.max(8, Math.min(12, w * .03));
   const leftX = w / 2 - laneW / 2 - gap / 2;
   const rightX = w / 2 + laneW / 2 + gap / 2;
   ctx.clearRect(0, 0, w, h);
@@ -581,11 +624,11 @@ function drawPart(part, nowBeat) {
   bg.addColorStop(1, "#08090d");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
-  drawLane(ctx, canvas, leftX, laneW, "Left", "#42c8c8", visualScale);
-  drawLane(ctx, canvas, rightX, laneW, "Right", "#f2b94b", visualScale);
+  drawLane(ctx, canvas, leftX, laneW, "Left", "#42c8c8", focusScale);
+  drawLane(ctx, canvas, rightX, laneW, "Right", "#f2b94b", focusScale);
   drawDivider(ctx, canvas, leftX, rightX);
   drawHitLine(ctx, leftX, rightX, laneW, hitY, w, full);
-  drawCountIn(ctx, nowBeat, w, h, hitY, visualScale);
+  drawCountIn(ctx, nowBeat, w, h, hitY, focusScale);
   drawSectionBands(ctx, nowBeat, sectionBoundaries, hitY, topPad, leadBeats, w, h);
   target.groups.forEach(group => {
     const y = hitY - (group.centerBeat - nowBeat) / leadBeats * (hitY - topPad);
@@ -596,10 +639,10 @@ function drawPart(part, nowBeat) {
     ctx.save();
     ctx.globalAlpha = .8;
     ctx.fillStyle = "rgba(255,248,236,.74)";
-    ctx.font = "900 " + Math.round(14 * visualScale) + "px Inter, system-ui";
+    ctx.font = "900 " + Math.round(14 * focusScale) + "px Inter, system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(group.word, (x1 + x2) / 2, y - (full ? 52 : 39));
+    ctx.fillText(group.word, (x1 + x2) / 2, y - (mobileFocus ? 48 : full ? 52 : 39));
     ctx.restore();
   });
   target.hits.forEach(hit => {
@@ -607,7 +650,7 @@ function drawPart(part, nowBeat) {
     if (delta > hitFadeBeats) return;
     const y = delta >= 0 ? hitY : hitY - (hit.timeBeat - nowBeat) / leadBeats * (hitY - topPad);
     if (y < -90 || y > h + 90) return;
-    drawNote(ctx, canvas, laneXForHand(hit.hand, leftX, rightX), y, hit, delta, visualScale);
+    drawNote(ctx, canvas, laneXForHand(hit.hand, leftX, rightX), y, hit, delta, focusScale);
   });
 }
 function drawLane(ctx, canvas, x, laneW, label, color, visualScale) {
@@ -637,14 +680,15 @@ function drawDivider(ctx, canvas, leftX, rightX) {
   ctx.restore();
 }
 function drawHitLine(ctx, leftX, rightX, laneW, hitY, w, full) {
-  const linePad = full ? 34 : 18;
+  const mobileFocus = document.body.classList.contains("mobile-practice-focus-mode") || document.body.classList.contains("mobile-practice-fullscreen");
+  const linePad = mobileFocus ? 28 : full ? 34 : 18;
   ctx.fillStyle = "rgba(242,185,75,.13)";
-  ctx.fillRect(leftX - laneW / 2 - linePad, hitY - (full ? 19 : 14), rightX - leftX + laneW + linePad * 2, full ? 38 : 28);
+  ctx.fillRect(leftX - laneW / 2 - linePad, hitY - (mobileFocus ? 18 : full ? 19 : 14), rightX - leftX + laneW + linePad * 2, mobileFocus ? 36 : full ? 38 : 28);
   ctx.save();
-  ctx.shadowBlur = full ? 14 : 6;
+  ctx.shadowBlur = mobileFocus ? 12 : full ? 14 : 6;
   ctx.shadowColor = "rgba(255,241,160,.54)";
   ctx.strokeStyle = "#fff1a0";
-  ctx.lineWidth = full ? 10 : 7;
+  ctx.lineWidth = mobileFocus ? 9 : full ? 10 : 7;
   ctx.beginPath();
   ctx.moveTo(Math.max(18, leftX - laneW / 2 - linePad), hitY);
   ctx.lineTo(Math.min(w - 18, rightX + laneW / 2 + linePad), hitY);
@@ -1074,14 +1118,95 @@ function finishReference(now) { running = false; pauseElapsed = now; app.classLi
 function restartReference() { running = false; lastMetronomeBeat = -1; cancelAnimationFrame(raf); pauseElapsed = 0; completedLoops = 0; buildTimeline(); startReference(); }
 function elapsed() { return running ? performance.now() - startTime : pauseElapsed; }
 function loop() { const now = elapsed(); const nowBeat = now / beatMs(); ensureInfiniteTimeline(nowBeat); stateEl.textContent = nowBeat < countInBeats ? "Count-in" : "Playing"; triggerMetronome(nowBeat); updateLoopCompletion(nowBeat); draw(now); if (!isInfiniteLoop() && nowBeat > totalBeats + 1.15) { finishReference(now); return; } if (running) raf = requestAnimationFrame(loop); }
-async function enterPracticeFullscreen() { setFullscreenMode(true); try { if (!document.fullscreenElement && app.requestFullscreen) await app.requestFullscreen(); } catch (error) {} draw(elapsed()); }
-async function exitPracticeFullscreen() { try { if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); } catch (error) {} setFullscreenMode(false); }
-function setFullscreenMode(active) { app.classList.toggle("practiceFullscreen", active); fullscreenBtn.textContent = active ? "Fullscreen: On" : "Fullscreen"; setTimeout(() => draw(elapsed()), 60); }
-function syncFullscreenState() { if (!document.fullscreenElement && app.classList.contains("practiceFullscreen")) setFullscreenMode(false); }
+function validInstrumentView(view) { return ["both", "treble", "bass"].includes(view) ? view : "both"; }
+function validInstrument(part) { return part === "bass" ? "bass" : "treble"; }
+function isMobileViewport() { return window.matchMedia ? window.matchMedia("(max-width: 760px)").matches : window.innerWidth <= 760; }
+function applyInstrumentView(view, { persist = true, redraw = true } = {}) {
+  instrumentView = validInstrumentView(view);
+  app.dataset.instrumentView = instrumentView;
+  viewButtons.forEach(button => {
+    const active = button.dataset.view === instrumentView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (persist) localStorage.setItem(INSTRUMENT_VIEW_KEY, instrumentView);
+  if (redraw) requestVisualResize();
+}
+function requestVisualResize(delay = 0) {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    requestAnimationFrame(() => draw(elapsed()));
+  }, delay);
+}
+function updateFullscreenCompactStatus() {
+  if (!fullscreenStatus) return;
+  fullscreenInstrumentName.textContent = fullscreenInstrument === "bass" ? "Bass" : "Treble / Chenda";
+  fullscreenStatus.textContent = "BPM " + bpm.value + " | " + loopStatusEl.textContent + " | " + playTimerEl.textContent + " | " + sectionIndicatorEl.textContent;
+  fullscreenMetronomeBtn.textContent = metronomeOn ? "Metro On" : "Metro Off";
+  fullscreenMetronomeBtn.classList.toggle("active", metronomeOn);
+  fullscreenMetronomeBtn.setAttribute("aria-pressed", String(metronomeOn));
+}
+function openFullscreenChoice() {
+  fullscreenChoice.hidden = false;
+}
+function closeFullscreenChoice() {
+  fullscreenChoice.hidden = true;
+}
+function chooseFullscreenFromCurrentView() {
+  if (!isMobileViewport()) return enterPracticeFullscreen("both");
+  if (instrumentView === "treble" || instrumentView === "bass") return enterPracticeFullscreen(instrumentView);
+  openFullscreenChoice();
+}
+async function enterPracticeFullscreen(instrument = "both") {
+  closeFullscreenChoice();
+  preFullscreenScroll = { x: window.scrollX || 0, y: window.scrollY || 0 };
+  fullscreenInstrument = instrument === "both" && isMobileViewport() ? validInstrument(localStorage.getItem(FULLSCREEN_INSTRUMENT_KEY)) : validInstrument(instrument);
+  if (!isMobileViewport() && instrument === "both") fullscreenInstrument = "treble";
+  localStorage.setItem(FULLSCREEN_INSTRUMENT_KEY, fullscreenInstrument);
+  app.dataset.fullscreenInstrument = fullscreenInstrument;
+  if (isMobileViewport()) {
+    document.body.classList.remove("mobile-practice-focus-mode", "mobile-practice-fullscreen");
+    try {
+      if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      else throw new Error("Fullscreen API unavailable");
+      document.body.classList.add("mobile-practice-fullscreen");
+    } catch (error) {
+      document.body.classList.add("mobile-practice-focus-mode");
+    }
+    setFullscreenMode(true);
+    requestVisualResize(40);
+    return;
+  }
+  setFullscreenMode(true);
+  try { if (!document.fullscreenElement && app.requestFullscreen) await app.requestFullscreen(); } catch (error) {}
+  requestVisualResize(40);
+}
+async function exitPracticeFullscreen() {
+  closeFullscreenChoice();
+  try { if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen(); } catch (error) {}
+  setFullscreenMode(false);
+  window.scrollTo(preFullscreenScroll.x, preFullscreenScroll.y);
+}
+function setFullscreenMode(active) {
+  app.classList.toggle("practiceFullscreen", active);
+  document.body.classList.toggle("practice-mode-active", active);
+  if (!active) document.body.classList.remove("mobile-practice-fullscreen", "mobile-practice-focus-mode");
+  fullscreenBtn.textContent = active ? "Fullscreen: On" : "Fullscreen";
+  updateFullscreenCompactStatus();
+  requestVisualResize(60);
+}
+function syncFullscreenState() {
+  if (!document.fullscreenElement && document.body.classList.contains("mobile-practice-fullscreen")) {
+    setFullscreenMode(false);
+    window.scrollTo(preFullscreenScroll.x, preFullscreenScroll.y);
+  } else if (!document.fullscreenElement && app.classList.contains("practiceFullscreen") && !document.body.classList.contains("mobile-practice-focus-mode")) {
+    setFullscreenMode(false);
+  }
+}
 function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
 
 function requiredElements() {
-  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, sectionIndicatorEl, loopStatusEl, playTimerEl };
+  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
 function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
 function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
@@ -1091,6 +1216,7 @@ function initializeApp() {
   warnMissingElements();
   writeSongLibrary(readSongLibrary());
   refreshSavedSongs();
+  applyInstrumentView(instrumentView, { persist: false, redraw: false });
   renderInsertButtons();
   renderDefinitions();
   renderWorkspace();
@@ -1111,9 +1237,16 @@ function initializeApp() {
   bindEvent(startBtn, "click", startReference, "start");
   bindEvent(stopBtn, "click", stopReference, "stop");
   bindEvent(restartBtn, "click", restartReference, "restart");
-  bindEvent(fullscreenBtn, "click", enterPracticeFullscreen, "fullscreen");
+  viewButtons.forEach(button => button.addEventListener("click", () => applyInstrumentView(button.dataset.view)));
+  bindEvent(fullscreenBtn, "click", chooseFullscreenFromCurrentView, "fullscreen");
+  bindEvent(fullscreenTrebleBtn, "click", () => enterPracticeFullscreen("treble"), "fullscreen treble");
+  bindEvent(fullscreenBassBtn, "click", () => enterPracticeFullscreen("bass"), "fullscreen bass");
+  bindEvent(fullscreenCancelBtn, "click", closeFullscreenChoice, "fullscreen cancel");
+  bindEvent(fullscreenChoice, "click", event => { if (event.target === fullscreenChoice) closeFullscreenChoice(); }, "fullscreen choice backdrop");
+  bindEvent(fullscreenStartBtn, "click", startReference, "fullscreen start");
   bindEvent(fullscreenStopBtn, "click", stopReference, "fullscreen stop");
   bindEvent(fullscreenRestartBtn, "click", restartReference, "fullscreen restart");
+  bindEvent(fullscreenMetronomeBtn, "click", toggleMetronome, "fullscreen metronome");
   bindEvent(exitFullscreenBtn, "click", exitPracticeFullscreen, "exit fullscreen");
   bindEvent(insertButtonsEl, "pointerdown", event => { if (event.target.closest("[data-insert-token]")) event.preventDefault(); }, "insert pointer guard");
   bindEvent(insertButtonsEl, "click", event => { const button = event.target.closest("[data-insert-token]"); if (button) insertToken(button.dataset.insertToken); }, "insert buttons");
@@ -1123,6 +1256,7 @@ function initializeApp() {
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) { setActiveEditor(event.target); updatePatternFromEditor(event.target); } });
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("[data-section-name]")) updateSectionNameFromInput(event.target); });
   document.addEventListener("scroll", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) syncLineNumbers(event.target); }, true);
+  document.addEventListener("toggle", event => { if (event.target.matches && event.target.matches("details")) requestVisualResize(80); }, true);
   document.addEventListener("click", event => {
     const sectionAction = event.target.closest("[data-section-action]");
     if (sectionAction) { handleInlineSectionAction(sectionAction); return; }
@@ -1143,9 +1277,9 @@ function initializeApp() {
     event.returnValue = "";
   });
   document.addEventListener("fullscreenchange", syncFullscreenState);
-  window.addEventListener("resize", () => draw(elapsed()));
-  window.addEventListener("orientationchange", () => setTimeout(() => draw(elapsed()), 120));
-  setActiveEditor(document.querySelector("textarea[data-part='treble']"));
+  window.addEventListener("resize", () => requestVisualResize(80));
+  window.addEventListener("orientationchange", () => requestVisualResize(160));
+  setActiveEditor(document.querySelector("textarea[data-part='" + (instrumentView === "bass" ? "bass" : "treble") + "']"));
   resetReference();
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initializeApp, { once: true });
