@@ -16,88 +16,83 @@
     <div class="status"><span class="dot"></span><span id="state">Stopped</span></div>
   </header>
 
-  <section class="controlBar" aria-label="Shared practice controls">
-    <div class="controlGroup bpmControls">
-      <label for="bpm">BPM</label>
-      <div class="bpmRow">
-        <input id="bpm" type="range" min="100" max="500" value="120">
-        <input id="bpmNumber" class="bpmNumber" type="number" min="100" max="500" value="120" inputmode="numeric" aria-label="BPM number">
+  <section class="practiceArea" aria-label="Practice Area">
+    <div class="areaHeading">PRACTICE AREA</div>
+
+    <section class="practiceStatus" aria-label="Playback status">
+      <div class="statusCluster viewCluster">
+        <span class="statusLabel">View</span>
+        <div class="viewChoices" role="group" aria-label="Instrument view">
+          <button type="button" class="viewChoice active" id="viewBoth" data-view="both" aria-pressed="true">Both</button>
+          <button type="button" class="viewChoice" id="viewTreble" data-view="treble" aria-pressed="false">Treble</button>
+          <button type="button" class="viewChoice" id="viewBass" data-view="bass" aria-pressed="false">Bass</button>
+        </div>
       </div>
-    </div>
+      <span id="sectionIndicator">Section -</span>
+      <span id="loopStatus">Loop: 0 / x4</span>
+      <span id="playTimer">00:00</span>
+    </section>
 
-    <div class="controlGroup metronomeControls">
-      <label>Metronome</label>
-      <div class="metroRow">
-        <button type="button" class="toggle" id="metronomeToggle" aria-pressed="false">Off</button>
-        <label class="inlineControl" for="metronomeVolume"><span>Vol</span><input id="metronomeVolume" type="range" min="0" max="1" step="0.05" value="0.3"></label>
-        <label class="inlineControl" for="metronomeSubdivision"><span>Pulse</span><select id="metronomeSubdivision" aria-label="Metronome pulse"><option value="1">1x</option><option value="2">1/2x</option><option value="4">1/4x</option></select></label>
+    <section class="partGrid">
+      <article class="partPanel treblePanel">
+        <header class="partHead">
+          <h2>TREBLE / CHENDA</h2>
+          <span id="trebleNow">Ready</span>
+        </header>
+        <div class="laneBox">
+          <canvas id="trebleLane" width="720" height="520" aria-label="Treble left and right hand note lanes"></canvas>
+          <div class="hitText">Fixed line</div>
+        </div>
+      </article>
+
+      <article class="partPanel bassPanel">
+        <header class="partHead">
+          <h2>BASS</h2>
+          <span id="bassNow">Ready</span>
+        </header>
+        <div class="laneBox">
+          <canvas id="bassLane" width="720" height="520" aria-label="Bass left and right hand note lanes"></canvas>
+          <div class="hitText">Fixed line</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="transportPanel" aria-label="Transport controls">
+      <button id="start" type="button">Start</button>
+      <button class="secondary" id="stop" type="button">Stop</button>
+      <button class="accent" id="restart" type="button">Restart</button>
+      <button id="fullscreen" type="button">Fullscreen</button>
+    </section>
+
+    <section class="controlBar" aria-label="Practice settings">
+      <div class="controlGroup bpmControls">
+        <label for="bpm">BPM</label>
+        <div class="bpmRow">
+          <input id="bpm" type="range" min="100" max="500" value="120">
+          <input id="bpmNumber" class="bpmNumber" type="number" min="100" max="500" value="120" inputmode="numeric" aria-label="BPM number">
+        </div>
       </div>
-    </div>
 
-    <div class="controlGroup loopControls">
-      <label>Loop</label>
-      <div class="loopChoices">
-        <button type="button" class="loop" data-loop="1">x1</button>
-        <button type="button" class="loop" data-loop="2">x2</button>
-        <button type="button" class="loop active" data-loop="4">x4</button>
-        <button type="button" class="loop" data-loop="6">x6</button>
-        <button type="button" class="loop" data-loop="Infinity">&infin;</button>
+      <div class="controlGroup metronomeControls">
+        <label>Metronome</label>
+        <div class="metroRow">
+          <button type="button" class="toggle" id="metronomeToggle" aria-pressed="false">Off</button>
+          <label class="inlineControl" for="metronomeVolume"><span>Vol</span><input id="metronomeVolume" type="range" min="0" max="1" step="0.05" value="0.3"></label>
+          <label class="inlineControl" for="metronomeSubdivision"><span>Pulse</span><select id="metronomeSubdivision" aria-label="Metronome pulse"><option value="1">1x</option><option value="2">1/2x</option><option value="4">1/4x</option></select></label>
+        </div>
       </div>
-    </div>
 
-    <div class="controlGroup transportControls">
-      <label>Practice</label>
-      <div class="transportRow">
-        <button id="start" type="button">Start</button>
-        <button class="secondary" id="stop" type="button">Stop</button>
-        <button class="accent" id="restart" type="button">Restart</button>
-        <button id="fullscreen" type="button">Fullscreen</button>
+      <div class="controlGroup loopControls">
+        <label>Loop</label>
+        <div class="loopChoices">
+          <button type="button" class="loop" data-loop="1">x1</button>
+          <button type="button" class="loop" data-loop="2">x2</button>
+          <button type="button" class="loop active" data-loop="4">x4</button>
+          <button type="button" class="loop" data-loop="6">x6</button>
+          <button type="button" class="loop" data-loop="Infinity">&infin;</button>
+        </div>
       </div>
-    </div>
-  </section>
-
-  <section class="insertBar" aria-label="Pattern insert controls">
-    <div class="activeEditor" id="activeEditorLabel">Editing: Treble</div>
-    <div class="insertButtons" id="insertButtons"></div>
-  </section>
-
-  <section class="practiceStatus" aria-label="Playback status">
-    <span id="sectionIndicator">Section -</span>
-    <span id="loopStatus">Loop: 0 / x4</span>
-    <span id="playTimer">00:00</span>
-  </section>
-
-  <section class="viewBar" aria-label="Instrument view">
-    <span>View</span>
-    <div class="viewChoices" role="group" aria-label="Instrument view">
-      <button type="button" class="viewChoice active" id="viewBoth" data-view="both" aria-pressed="true">Both</button>
-      <button type="button" class="viewChoice" id="viewTreble" data-view="treble" aria-pressed="false">Treble</button>
-      <button type="button" class="viewChoice" id="viewBass" data-view="bass" aria-pressed="false">Bass</button>
-    </div>
-  </section>
-
-  <section class="partGrid">
-    <article class="partPanel treblePanel">
-      <header class="partHead">
-        <h2>TREBLE / CHENDA</h2>
-        <span id="trebleNow">Ready</span>
-      </header>
-      <div class="laneBox">
-        <canvas id="trebleLane" width="720" height="520" aria-label="Treble left and right hand note lanes"></canvas>
-        <div class="hitText">Fixed line</div>
-      </div>
-    </article>
-
-    <article class="partPanel bassPanel">
-      <header class="partHead">
-        <h2>BASS</h2>
-        <span id="bassNow">Ready</span>
-      </header>
-      <div class="laneBox">
-        <canvas id="bassLane" width="720" height="520" aria-label="Bass left and right hand note lanes"></canvas>
-        <div class="hitText">Fixed line</div>
-      </div>
-    </article>
+    </section>
   </section>
 
   <section class="songWorkspace" aria-label="Song Workspace">
@@ -105,6 +100,7 @@
       <h2>SONG WORKSPACE</h2>
       <span class="saveStatus" id="songSaveStatus">New song - not saved</span>
     </div>
+
     <div class="workspaceControls">
       <label class="workspaceField" for="savedSongs"><span>Saved Song</span><select id="savedSongs" aria-label="Saved Song"></select></label>
       <button type="button" id="loadSong">Load Song</button>
@@ -116,28 +112,49 @@
         <button type="button" class="danger" id="deleteSong">Delete Song</button>
       </div>
     </div>
+
+    <section class="insertBar" aria-label="Pattern insert controls">
+      <div class="insertTargetPanel">
+        <span>Insert into</span>
+        <div class="insertTargetChoices" role="group" aria-label="Insertion target">
+          <button type="button" class="insertTarget active" data-insert-target="treble" aria-pressed="true">Treble</button>
+          <button type="button" class="insertTarget" data-insert-target="bass" aria-pressed="false">Bass</button>
+        </div>
+      </div>
+      <div class="activeEditor" id="activeEditorLabel">Editing: Treble</div>
+      <div class="insertGroups">
+        <div class="insertGroup">
+          <span>Rhythm words</span>
+          <div class="insertButtons" id="insertButtons"></div>
+        </div>
+        <div class="insertGroup">
+          <span>Rests</span>
+          <div class="insertButtons restInsertButtons" id="restInsertButtons"></div>
+        </div>
+      </div>
+    </section>
+
+    <details class="definitions" id="wordDefinitions">
+      <summary>Word &amp; Rest Definitions</summary>
+      <div class="definitionList" id="wordDefinitionList"></div>
+    </details>
+
+    <section class="editorGrid">
+      <article class="partPanel editorPanel treblePanel">
+        <details class="partEditorArea" open>
+          <summary>Treble / Chenda Sections</summary>
+          <div class="sectionEditors" id="trebleEditors"></div>
+        </details>
+      </article>
+
+      <article class="partPanel editorPanel bassPanel">
+        <details class="partEditorArea" open>
+          <summary>Bass Sections</summary>
+          <div class="sectionEditors" id="bassEditors"></div>
+        </details>
+      </article>
+    </section>
   </section>
-
-  <section class="editorGrid">
-    <article class="partPanel editorPanel treblePanel">
-      <details class="partEditorArea" open>
-        <summary>Treble / Chenda Pattern</summary>
-        <div class="sectionEditors" id="trebleEditors"></div>
-      </details>
-    </article>
-
-    <article class="partPanel editorPanel bassPanel">
-      <details class="partEditorArea" open>
-        <summary>Bass Pattern</summary>
-        <div class="sectionEditors" id="bassEditors"></div>
-      </details>
-    </article>
-  </section>
-
-  <details class="definitions" id="wordDefinitions">
-    <summary>Word &amp; Rest Definitions</summary>
-    <div class="definitionList" id="wordDefinitionList"></div>
-  </details>
 
   <footer class="appFooter">Chenda Practice Trainer v0.1.0</footer>
 

@@ -126,6 +126,8 @@ const stateEl = $("state");
 const songTitleEl = $("songTitle");
 const activeEditorLabel = $("activeEditorLabel");
 const insertButtonsEl = $("insertButtons");
+const restInsertButtonsEl = $("restInsertButtons");
+const insertTargetButtons = Array.from(document.querySelectorAll("[data-insert-target]"));
 const sectionIndicatorEl = $("sectionIndicator");
 const loopStatusEl = $("loopStatus");
 const playTimerEl = $("playTimer");
@@ -784,6 +786,7 @@ function renderWorkspace() {
   if (songNameInput) songNameInput.value = currentSong.name || "";
   renderPartEditors("treble", trebleEditorsEl);
   renderPartEditors("bass", bassEditorsEl);
+  setActiveEditor(document.querySelector("textarea[data-part='" + activeEditorPart + "']") || document.querySelector("textarea[data-part='treble']"));
   updateAllMetrics();
   updateSongStatus();
   buildTimeline();
@@ -953,7 +956,25 @@ function setActiveEditor(textarea) {
   activeEditorPart = textarea.dataset.part === "bass" ? "bass" : "treble";
   activeEditorLabel.textContent = "Editing: " + partLabel(activeEditorPart);
   document.querySelectorAll("textarea[data-part]").forEach(item => item.classList.toggle("activePattern", item === textarea));
+  updateInsertTargetButtons();
   editorCursor.set(textarea, { start: textarea.selectionStart ?? textarea.value.length, end: textarea.selectionEnd ?? textarea.selectionStart ?? textarea.value.length });
+}
+function setInsertTarget(part) {
+  const nextPart = part === "bass" ? "bass" : "treble";
+  const preferred = activeEditor && activeEditor.dataset.part === nextPart ? activeEditor : document.querySelector("textarea[data-part='" + nextPart + "']");
+  if (preferred) setActiveEditor(preferred);
+  else {
+    activeEditorPart = nextPart;
+    activeEditorLabel.textContent = "Editing: " + partLabel(activeEditorPart);
+    updateInsertTargetButtons();
+  }
+}
+function updateInsertTargetButtons() {
+  insertTargetButtons.forEach(button => {
+    const active = button.dataset.insertTarget === activeEditorPart;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 function updatePatternFromEditor(textarea) {
   const index = Number(textarea.dataset.sectionIndex);
@@ -1051,16 +1072,17 @@ function padSection(index) {
 
 function renderInsertButtons() {
   insertButtonsEl.innerHTML = "";
-  supportedWords().forEach(word => appendInsertButton(word, word, WORD_DEFINITIONS[word].colorClass));
-  supportedRests().forEach(rest => appendInsertButton(rest, "Rest " + REST_DEFINITIONS[rest].durationBeats, "restButton"));
+  if (restInsertButtonsEl) restInsertButtonsEl.innerHTML = "";
+  supportedWords().forEach(word => appendInsertButton(insertButtonsEl, word, word, WORD_DEFINITIONS[word].colorClass));
+  supportedRests().forEach(rest => appendInsertButton(restInsertButtonsEl || insertButtonsEl, rest, "Rest " + REST_DEFINITIONS[rest].durationBeats, "restButton"));
 }
-function appendInsertButton(token, label, className) {
+function appendInsertButton(container, token, label, className) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "insertButton " + className;
   button.dataset.insertToken = token;
   button.textContent = label;
-  insertButtonsEl.appendChild(button);
+  container.appendChild(button);
 }
 function renderDefinitions() {
   wordDefinitionListEl.innerHTML = "";
@@ -1206,7 +1228,7 @@ function syncFullscreenState() {
 function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
 
 function requiredElements() {
-  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, sectionIndicatorEl, loopStatusEl, playTimerEl };
+  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
 function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
 function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
@@ -1250,6 +1272,10 @@ function initializeApp() {
   bindEvent(exitFullscreenBtn, "click", exitPracticeFullscreen, "exit fullscreen");
   bindEvent(insertButtonsEl, "pointerdown", event => { if (event.target.closest("[data-insert-token]")) event.preventDefault(); }, "insert pointer guard");
   bindEvent(insertButtonsEl, "click", event => { const button = event.target.closest("[data-insert-token]"); if (button) insertToken(button.dataset.insertToken); }, "insert buttons");
+  bindEvent(restInsertButtonsEl, "pointerdown", event => { if (event.target.closest("[data-insert-token]")) event.preventDefault(); }, "rest insert pointer guard");
+  bindEvent(restInsertButtonsEl, "click", event => { const button = event.target.closest("[data-insert-token]"); if (button) insertToken(button.dataset.insertToken); }, "rest insert buttons");
+  if (!insertTargetButtons.length) console.warn("Chenda Practice Trainer missing insert target buttons.");
+  insertTargetButtons.forEach(button => button.addEventListener("click", () => setInsertTarget(button.dataset.insertTarget)));
   document.addEventListener("focusin", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("keyup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("mouseup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
@@ -1261,7 +1287,8 @@ function initializeApp() {
     const sectionAction = event.target.closest("[data-section-action]");
     if (sectionAction) { handleInlineSectionAction(sectionAction); return; }
     const tokenButton = event.target.closest("[data-insert-token]");
-    if (tokenButton && !insertButtonsEl.contains(tokenButton)) {
+    const isWorkspaceInsert = tokenButton && (insertButtonsEl.contains(tokenButton) || (restInsertButtonsEl && restInsertButtonsEl.contains(tokenButton)));
+    if (tokenButton && !isWorkspaceInsert) {
       if (tokenButton.dataset.insertPart && tokenButton.dataset.insertSection) insertTokenForPart(tokenButton.dataset.insertToken, tokenButton.dataset.insertPart, tokenButton.dataset.insertSection);
       else insertToken(tokenButton.dataset.insertToken);
       return;
