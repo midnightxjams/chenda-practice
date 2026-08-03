@@ -27,7 +27,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 label{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;font-weight:850}
 select,input[type=number],input[type=text],textarea{border:1px solid #42495a;border-radius:8px;background:#10131a;color:var(--ink)}
 select,input[type=number],input[type=text]{height:40px;padding:0 10px}
-textarea{width:100%;min-height:92px;padding:10px;line-height:1.45;text-transform:uppercase;resize:vertical}
+textarea{width:100%;min-height:92px;padding:10px;line-height:1.45;text-transform:uppercase;resize:vertical;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}
 textarea:focus,input:focus,select:focus{outline:2px solid rgba(66,200,200,.42);outline-offset:2px}
 .app{width:min(1480px,calc(100vw - 28px));margin:0 auto;padding:18px 0 26px}
 .topBar{display:flex;justify-content:space-between;align-items:end;gap:14px;margin-bottom:12px}
@@ -74,8 +74,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .viewChoice{min-height:38px;background:#2b303d;color:var(--ink);border:1px solid #495063}
 .viewChoice.active{background:var(--gold);color:#090a0e;border-color:transparent}
 .partGrid,.editorGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
-.app[data-instrument-view=treble] .bassPanel,.app[data-instrument-view=bass] .treblePanel{display:none}
-.app[data-instrument-view=treble] .partGrid,.app[data-instrument-view=bass] .partGrid,.app[data-instrument-view=treble] .editorGrid,.app[data-instrument-view=bass] .editorGrid{grid-template-columns:minmax(0,1fr)}
+.app[data-instrument-view=treble] .partGrid>.bassPanel,.app[data-instrument-view=bass] .partGrid>.treblePanel{display:none}
+.app[data-instrument-view=treble] .partGrid,.app[data-instrument-view=bass] .partGrid{grid-template-columns:minmax(0,1fr)}
 .editorGrid{margin-top:12px}
 .partPanel{border:1px solid var(--line);border-radius:8px;background:linear-gradient(180deg,rgba(32,36,46,.94),rgba(23,26,33,.98));box-shadow:0 14px 44px rgba(0,0,0,.26);padding:12px;display:grid;gap:10px;min-width:0}
 .editorPanel{box-shadow:0 12px 40px rgba(0,0,0,.22)}
@@ -178,6 +178,7 @@ body.mobile-practice-focus-mode .partHead,body.mobile-practice-fullscreen .partH
 body.mobile-practice-focus-mode .partHead h2,body.mobile-practice-fullscreen .partHead h2{font-size:.9rem}
 body.mobile-practice-focus-mode canvas,body.mobile-practice-fullscreen canvas{height:100%;min-height:0}
 body.mobile-practice-focus-mode .app[data-fullscreen-instrument=treble] .partGrid>.bassPanel,body.mobile-practice-fullscreen .app[data-fullscreen-instrument=treble] .partGrid>.bassPanel,body.mobile-practice-focus-mode .app[data-fullscreen-instrument=bass] .partGrid>.treblePanel,body.mobile-practice-fullscreen .app[data-fullscreen-instrument=bass] .partGrid>.treblePanel{display:none}
+body.mobile-practice-focus-mode .app[data-fullscreen-instrument=treble] .partGrid>.treblePanel,body.mobile-practice-fullscreen .app[data-fullscreen-instrument=treble] .partGrid>.treblePanel,body.mobile-practice-focus-mode .app[data-fullscreen-instrument=bass] .partGrid>.bassPanel,body.mobile-practice-fullscreen .app[data-fullscreen-instrument=bass] .partGrid>.bassPanel{display:grid}
 body.mobile-practice-focus-mode .fullscreenControls,body.mobile-practice-fullscreen .fullscreenControls{display:grid;grid-template-columns:minmax(0,1fr) repeat(5,auto);left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:95;gap:6px}
 body.mobile-practice-focus-mode .fullscreenInfo,body.mobile-practice-fullscreen .fullscreenInfo{min-width:0}
 body.mobile-practice-focus-mode .fullscreenControls button,body.mobile-practice-fullscreen .fullscreenControls button{min-height:42px;padding:0 9px;font-size:.82rem}

@@ -179,7 +179,12 @@ function supportedRests() { return DISPLAY_REST_ORDER.filter(rest => restDef(res
 function normalizeToken(token) { return LEGACY_WORD_ALIASES[token] || token; }
 function tokenize(text) { return (String(text || "").toUpperCase().match(/[A-Z0-9.]+/g) || []).map(normalizeToken); }
 function splitPatternLines(text) { return String(text || "").replace(/\r\n?/g, "\n").split("\n"); }
-function normalizePatternText(text) { return splitPatternLines(text).map(line => tokenize(line).filter(token => tokenDef(token)).join(" ")).join("\n"); }
+function normalizePastedPattern(text) { return String(text || "").replace(/\r\n?/g, "\n").replace(/\u00a0/g, " "); }
+function normalizePatternText(text) {
+  return normalizePastedPattern(text)
+    .toUpperCase()
+    .replace(/(^|[^A-Z0-9.])TA(?=$|[^A-Z0-9.])/g, "$1THA");
+}
 function invalidPatternTokens(text) { return [...new Set(tokenize(text).filter(token => !tokenDef(token)))]; }
 function lineTokens(pattern, lineIndex) { return tokenize(splitPatternLines(pattern)[lineIndex] || "").filter(token => tokenDef(token)); }
 function lineInvalidTokens(pattern, lineIndex) { return tokenize(splitPatternLines(pattern)[lineIndex] || "").filter(token => !tokenDef(token)); }
@@ -909,6 +914,21 @@ function syncLineNumbers(textarea) {
     numbers.scrollTop = textarea.scrollTop;
   }
 }
+function handlePatternPaste(event) {
+  const textarea = event.target;
+  const clipboard = event.clipboardData || window.clipboardData;
+  if (!clipboard || !textarea.matches || !textarea.matches("textarea[data-part]")) return;
+  event.preventDefault();
+  const pasted = normalizePastedPattern(clipboard.getData("text"));
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  textarea.value = textarea.value.slice(0, start) + pasted + textarea.value.slice(end);
+  const cursor = start + pasted.length;
+  if (textarea.setSelectionRange) textarea.setSelectionRange(cursor, cursor);
+  editorCursor.set(textarea, { start: cursor, end: cursor });
+  setActiveEditor(textarea);
+  updatePatternFromEditor(textarea);
+}
 function renderLineAnalysis(section, sectionIndex, part) {
   const container = document.querySelector("[data-line-analysis-for='" + sectionIndex + "'][data-line-analysis-part='" + part + "']");
   if (!container) return;
@@ -1158,7 +1178,7 @@ function applyInstrumentView(view, { persist = true, redraw = true } = {}) {
 function requestVisualResize(delay = 0) {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    requestAnimationFrame(() => draw(elapsed()));
+    requestAnimationFrame(() => requestAnimationFrame(() => draw(elapsed())));
   }, delay);
 }
 function updateFullscreenCompactStatus() {
@@ -1281,6 +1301,7 @@ function initializeApp() {
   document.addEventListener("keyup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("mouseup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) { setActiveEditor(event.target); updatePatternFromEditor(event.target); } });
+  document.addEventListener("paste", handlePatternPaste);
   document.addEventListener("input", event => { if (event.target.matches && event.target.matches("[data-section-name]")) updateSectionNameFromInput(event.target); });
   document.addEventListener("scroll", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) syncLineNumbers(event.target); }, true);
   document.addEventListener("toggle", event => { if (event.target.matches && event.target.matches("details")) requestVisualResize(80); }, true);
