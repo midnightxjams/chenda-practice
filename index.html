@@ -13,11 +13,32 @@
       <h1>Chenda Practice Trainer</h1>
       <div class="songTitle" id="songTitle">Unsaved practice song</div>
     </div>
-    <div class="status"><span class="dot"></span><span id="state">Stopped</span></div>
+    <div class="topControls">
+      <div class="modeSwitch" role="group" aria-label="Mode selector">
+        <button type="button" class="modeButton active" id="practiceModeBtn" data-mode="practice" aria-pressed="true">Practice</button>
+        <button type="button" class="modeButton" id="editModeBtn" data-mode="edit" aria-pressed="false">Edit</button>
+      </div>
+      <div class="status"><span class="dot"></span><span id="state">Stopped</span></div>
+    </div>
   </header>
 
   <section class="practiceArea" aria-label="Practice Area">
     <div class="areaHeading">PRACTICE AREA</div>
+
+    <section class="practiceSetup" aria-label="Practice setup">
+      <label class="practiceField" for="practiceSongSelect"><span>Song</span><select id="practiceSongSelect" aria-label="Practice song"></select></label>
+      <label class="practiceField" for="practiceRangeSelect"><span>Practice</span><select id="practiceRangeSelect" aria-label="Practice range"></select></label>
+      <div class="sectionNav" aria-label="Section navigation">
+        <button type="button" class="secondary" id="prevSection">Previous Section</button>
+        <span id="selectedSectionLabel">Full Song</span>
+        <button type="button" class="secondary" id="nextSection">Next Section</button>
+      </div>
+    </section>
+
+    <section class="practiceScope" aria-label="Current practice scope">
+      <span id="practiceSongLabel">Song: -</span>
+      <span id="practiceScopeLabel">Practice: Full Song</span>
+    </section>
 
     <section class="practiceStatus" aria-label="Playback status">
       <div class="statusCluster viewCluster">
@@ -109,6 +130,7 @@
         <button type="button" class="secondary" id="newSong">New Song</button>
         <button type="button" id="saveSong">Save Song</button>
         <button type="button" class="accent" id="saveAsSong">Save As</button>
+        <button type="button" class="secondary" id="duplicateBuiltIn">Duplicate to My Songs</button>
         <button type="button" class="danger" id="deleteSong">Delete Song</button>
       </div>
     </div>

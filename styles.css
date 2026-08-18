@@ -31,6 +31,10 @@ textarea{width:100%;min-height:92px;padding:10px;line-height:1.45;text-transform
 textarea:focus,input:focus,select:focus{outline:2px solid rgba(66,200,200,.42);outline-offset:2px}
 .app{width:min(1480px,calc(100vw - 28px));margin:0 auto;padding:18px 0 26px}
 .topBar{display:flex;justify-content:space-between;align-items:end;gap:14px;margin-bottom:12px}
+.topControls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.modeSwitch{display:grid;grid-template-columns:1fr 1fr;gap:6px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.05);padding:5px}
+.modeButton{min-height:36px;background:#2b303d;color:var(--ink);border:1px solid #495063}
+.modeButton.active{background:var(--gold);color:#090a0e;border-color:transparent}
 h1{margin:0;font-size:clamp(1.8rem,3.4vw,3.8rem);line-height:.96;letter-spacing:0;font-weight:950}
 .songTitle{margin-top:6px;color:var(--gold);font-size:1rem;font-weight:900}
 .status{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.06);padding:8px 12px;color:var(--muted);white-space:nowrap}
@@ -38,6 +42,12 @@ h1{margin:0;font-size:clamp(1.8rem,3.4vw,3.8rem);line-height:.96;letter-spacing:
 .playing .dot{background:var(--green);box-shadow:0 0 0 4px rgba(96,214,127,.14)}
 .practiceArea{border:1px solid var(--line);border-radius:8px;background:rgba(17,20,28,.68);box-shadow:var(--shadow);padding:12px;display:grid;gap:10px}
 .areaHeading{color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.12em;font-weight:950}
+.practiceSetup{display:grid;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) minmax(320px,1.35fr);gap:10px;align-items:end}
+.practiceField{display:grid;gap:6px}
+.sectionNav{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:7px;align-items:center}
+.sectionNav span{min-height:40px;display:grid;place-items:center;border:1px solid rgba(255,248,236,.18);border-radius:8px;background:rgba(9,10,14,.42);padding:0 10px;color:var(--gold);font-weight:950;white-space:nowrap}
+.practiceScope{display:flex;gap:8px;flex-wrap:wrap}
+.practiceScope span{border:1px solid rgba(255,248,236,.16);border-radius:8px;background:rgba(9,10,14,.46);padding:8px 10px;color:rgba(255,248,236,.86);font-weight:900}
 .controlBar{display:grid;grid-template-columns:minmax(230px,1fr) minmax(280px,1.2fr) minmax(230px,.9fr);gap:10px}
 .controlGroup{border:1px solid var(--line);border-radius:8px;background:rgba(26,29,38,.88);padding:10px;display:grid;gap:7px;box-shadow:0 10px 34px rgba(0,0,0,.18)}
 .transportPanel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;border:1px solid var(--line);border-radius:8px;background:rgba(26,29,38,.82);padding:10px}
@@ -87,6 +97,8 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 canvas{display:block;width:100%;height:520px}
 .hitText{position:absolute;left:0;right:0;bottom:12px;text-align:center;color:rgba(255,248,236,.62);font-size:.82rem;font-weight:850;pointer-events:none}
 .songWorkspace{margin-top:12px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(180deg,rgba(29,33,43,.98),rgba(18,21,29,.98));box-shadow:0 16px 48px rgba(0,0,0,.28);padding:12px;display:grid;gap:10px}
+.app[data-app-mode=practice] .songWorkspace{display:none}
+.app[data-app-mode=edit] .songWorkspace{display:grid}
 .workspaceHead{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .workspaceHead h2{margin:0;font-size:.9rem;letter-spacing:.12em;font-weight:950;color:var(--ink)}
 .saveStatus{border:1px solid rgba(255,248,236,.16);border-radius:999px;background:rgba(9,10,14,.42);padding:6px 10px;color:var(--muted);font-weight:900;white-space:nowrap}
@@ -94,7 +106,7 @@ canvas{display:block;width:100%;height:520px}
 .saveStatus.saved{color:var(--green);border-color:rgba(96,214,127,.3);background:rgba(96,214,127,.08)}
 .workspaceControls{display:grid;grid-template-columns:minmax(220px,1fr) auto minmax(260px,1.2fr) minmax(360px,1.5fr);gap:9px;align-items:end}
 .workspaceField{display:grid;gap:6px}
-.workspaceActions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.workspaceActions{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
 .partEditorArea{display:grid;gap:8px}
 .partEditorArea summary{cursor:pointer;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;font-weight:850}
 .sectionEditors{display:grid;gap:9px}
@@ -134,7 +146,7 @@ textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,18
 .wordLabel{display:inline-grid;place-items:center;min-height:32px;border-radius:8px;padding:0 8px;font-weight:950}
 .word-tha{background:#f2b94b!important;color:#090a0e!important}.word-thaka{background:#42c8c8!important;color:#071011!important}.word-thakaa{background:#60d67f!important;color:#07100a!important}.word-thakka{background:#e95a45!important;color:#fff8ec!important}.word-thakita{background:#8d7cff!important;color:#090a0e!important}.word-123{background:#ff8fc7!important;color:#130811!important}.restButton,.restLabel{background:#dfe4ef!important;color:#0b0c10!important}
 .appFooter{margin-top:12px;text-align:center;color:rgba(255,248,236,.42);font-size:.76rem;letter-spacing:.04em}
-.sectionActions{display:grid;grid-template-columns:repeat(4,auto);gap:7px}
+.sectionActions{display:grid;grid-template-columns:repeat(5,auto);gap:7px}
 .sectionActions button{min-height:34px;font-size:.82rem}
 .fullscreenChoice{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:18px;background:rgba(0,0,0,.58)}
 .fullscreenChoice[hidden]{display:none}
@@ -150,6 +162,7 @@ textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,18
   .app.practiceFullscreen{width:100vw;max-width:100vw;height:100vh;padding:10px;overflow:auto}
   .app.practiceFullscreen .topBar{display:none}
   .app.practiceFullscreen .practiceArea{gap:8px;padding:10px}
+  .app.practiceFullscreen .practiceSetup{grid-template-columns:minmax(180px,1fr) minmax(180px,1fr) minmax(280px,1.2fr);gap:8px}
   .app.practiceFullscreen .controlBar{grid-template-columns:minmax(210px,.95fr) minmax(250px,1.15fr) minmax(210px,.9fr);gap:8px}
   .app.practiceFullscreen .controlGroup{padding:8px;gap:5px}
   .app.practiceFullscreen .transportPanel{padding:8px}
@@ -169,10 +182,12 @@ textarea.activePattern{border-color:var(--gold);box-shadow:0 0 0 2px rgba(242,18
 
 body.mobile-practice-focus-mode .app,body.mobile-practice-fullscreen .app{position:fixed;inset:0;width:100%;height:100dvh;z-index:70;overflow:hidden;padding:calc(8px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));background:linear-gradient(145deg,#0b0c10,#131720 54%,#090b10)}
 body.mobile-practice-focus-mode .practiceArea,body.mobile-practice-fullscreen .practiceArea{height:100%;padding:0;border:0;background:transparent;box-shadow:none}
-body.mobile-practice-focus-mode .topBar,body.mobile-practice-fullscreen .topBar,body.mobile-practice-focus-mode .areaHeading,body.mobile-practice-fullscreen .areaHeading,body.mobile-practice-focus-mode .controlBar,body.mobile-practice-fullscreen .controlBar,body.mobile-practice-focus-mode .transportPanel,body.mobile-practice-fullscreen .transportPanel,body.mobile-practice-focus-mode .insertBar,body.mobile-practice-fullscreen .insertBar,body.mobile-practice-focus-mode .viewBar,body.mobile-practice-fullscreen .viewBar,body.mobile-practice-focus-mode .songWorkspace,body.mobile-practice-fullscreen .songWorkspace,body.mobile-practice-focus-mode .editorGrid,body.mobile-practice-fullscreen .editorGrid,body.mobile-practice-focus-mode .definitions,body.mobile-practice-fullscreen .definitions,body.mobile-practice-focus-mode .appFooter,body.mobile-practice-fullscreen .appFooter{display:none}
-body.mobile-practice-focus-mode .practiceStatus,body.mobile-practice-fullscreen .practiceStatus{position:absolute;left:8px;right:8px;top:86px;z-index:75;grid-template-columns:1fr;gap:4px;pointer-events:none}
+body.mobile-practice-focus-mode .topBar,body.mobile-practice-fullscreen .topBar,body.mobile-practice-focus-mode .areaHeading,body.mobile-practice-fullscreen .areaHeading,body.mobile-practice-focus-mode .practiceSetup,body.mobile-practice-fullscreen .practiceSetup,body.mobile-practice-focus-mode .controlBar,body.mobile-practice-fullscreen .controlBar,body.mobile-practice-focus-mode .transportPanel,body.mobile-practice-fullscreen .transportPanel,body.mobile-practice-focus-mode .insertBar,body.mobile-practice-fullscreen .insertBar,body.mobile-practice-focus-mode .viewBar,body.mobile-practice-fullscreen .viewBar,body.mobile-practice-focus-mode .songWorkspace,body.mobile-practice-fullscreen .songWorkspace,body.mobile-practice-focus-mode .editorGrid,body.mobile-practice-fullscreen .editorGrid,body.mobile-practice-focus-mode .definitions,body.mobile-practice-fullscreen .definitions,body.mobile-practice-focus-mode .appFooter,body.mobile-practice-fullscreen .appFooter{display:none}
+body.mobile-practice-focus-mode .practiceScope,body.mobile-practice-fullscreen .practiceScope{position:absolute;left:8px;right:8px;top:56px;z-index:75;display:grid;grid-template-columns:1fr;gap:4px;pointer-events:none}
+body.mobile-practice-focus-mode .practiceScope span,body.mobile-practice-fullscreen .practiceScope span{padding:5px 8px;font-size:.74rem;background:rgba(9,10,14,.54)}
+body.mobile-practice-focus-mode .practiceStatus,body.mobile-practice-fullscreen .practiceStatus{position:absolute;left:8px;right:8px;top:116px;z-index:75;grid-template-columns:1fr;gap:4px;pointer-events:none}
 body.mobile-practice-focus-mode .practiceStatus span,body.mobile-practice-fullscreen .practiceStatus span{padding:5px 8px;font-size:.74rem;background:rgba(9,10,14,.54)}
-body.mobile-practice-focus-mode .partGrid,body.mobile-practice-fullscreen .partGrid{height:100%;display:grid;grid-template-columns:1fr;gap:0;padding-top:72px}
+body.mobile-practice-focus-mode .partGrid,body.mobile-practice-fullscreen .partGrid{height:100%;display:grid;grid-template-columns:1fr;gap:0;padding-top:132px}
 body.mobile-practice-focus-mode .partGrid>.partPanel,body.mobile-practice-fullscreen .partGrid>.partPanel{min-height:0;height:100%;padding:6px;border-radius:8px;grid-template-rows:auto minmax(0,1fr)}
 body.mobile-practice-focus-mode .partHead,body.mobile-practice-fullscreen .partHead{padding:0 4px}
 body.mobile-practice-focus-mode .partHead h2,body.mobile-practice-fullscreen .partHead h2{font-size:.9rem}
@@ -185,6 +200,8 @@ body.mobile-practice-focus-mode .fullscreenControls button,body.mobile-practice-
 
 @media(max-width:1180px){
   .controlBar{grid-template-columns:1fr 1fr}
+  .practiceSetup{grid-template-columns:1fr 1fr}
+  .sectionNav{grid-column:1/-1}
   .controlBar .loopControls{grid-column:1/-1}
   .workspaceControls{grid-template-columns:1fr auto}
   .songNameField,.workspaceActions{grid-column:1/-1}
@@ -200,8 +217,12 @@ body.mobile-practice-focus-mode .fullscreenControls button,body.mobile-practice-
 @media(max-width:760px){
   .app{width:100%;max-width:100vw;padding:12px 9px 18px}
   .topBar{align-items:start;flex-direction:column}
+  .topControls{width:100%;justify-content:space-between}
+  .modeSwitch{width:100%}
   h1{font-size:clamp(1.75rem,10vw,2.8rem)}
   .controlBar{grid-template-columns:1fr;gap:9px}
+  .practiceSetup{grid-template-columns:1fr}
+  .sectionNav{grid-template-columns:1fr}
   .buttonRow,.transportRow,.transportPanel{grid-template-columns:1fr 1fr}
   .metroRow{grid-template-columns:1fr}
   .inlineControl select,.inlineControl input{min-height:34px}

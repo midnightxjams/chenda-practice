@@ -76,6 +76,7 @@ const LEGACY_WORD_ALIASES = { TA: "THA" };
 const SONG_LIBRARY_KEY = "chendaPracticeSongs";
 const INSTRUMENT_VIEW_KEY = "chendaPracticeInstrumentView";
 const FULLSCREEN_INSTRUMENT_KEY = "chendaPracticeFullscreenInstrument";
+const APP_MODE_KEY = "chendaPracticeAppMode";
 const PARTS = ["treble", "bass"];
 const countInBeats = 4;
 const prepGapBeats = 4;
@@ -91,15 +92,34 @@ const defaultSong = {
   ],
   lastPart: "treble"
 };
+const BUILT_IN_SONGS = [
+  {
+    id: "built-in:onam-performance",
+    name: "Onam Performance",
+    readOnly: true,
+    sections: defaultSong.sections.map(section => ({ ...section })),
+    lastPart: "treble"
+  }
+];
 
 const $ = id => document.getElementById(id);
 const app = $("app");
+const practiceModeBtn = $("practiceModeBtn");
+const editModeBtn = $("editModeBtn");
+const practiceSongSelect = $("practiceSongSelect");
+const practiceRangeSelect = $("practiceRangeSelect");
+const prevSectionBtn = $("prevSection");
+const nextSectionBtn = $("nextSection");
+const selectedSectionLabel = $("selectedSectionLabel");
+const practiceSongLabel = $("practiceSongLabel");
+const practiceScopeLabel = $("practiceScopeLabel");
 const savedSongsSelect = $("savedSongs");
 const loadSongBtn = $("loadSong");
 const newSongBtn = $("newSong");
 const deleteSongBtn = $("deleteSong");
 const saveSongBtn = $("saveSong");
 const saveAsSongBtn = $("saveAsSong");
+const duplicateBuiltInBtn = $("duplicateBuiltIn");
 const songNameInput = $("songNameInput");
 const songSaveStatusEl = $("songSaveStatus");
 const bpm = $("bpm");
@@ -143,9 +163,11 @@ const canvases = {
 };
 PARTS.forEach(part => { canvases[part].ctx = canvases[part].canvas.getContext("2d"); });
 
-let currentSongId = "";
-let currentSong = cloneSong(defaultSong);
+let currentSongId = BUILT_IN_SONGS[0]?.id || "";
+let currentSong = cloneSong(BUILT_IN_SONGS[0] || defaultSong);
 let isDirty = false;
+let appMode = "practice";
+let selectedPracticeRange = "full";
 let activeEditor = null;
 let activeEditorPart = "treble";
 let running = false;
@@ -209,9 +231,14 @@ function normalizeSong(song) {
     id,
     name: String(song && song.name ? song.name : "Untitled Song"),
     sections: rawSections.map(makeSection),
-    lastPart: "treble"
+    lastPart: "treble",
+    readOnly: !!(song && song.readOnly)
   };
 }
+function builtInSongs() { return BUILT_IN_SONGS.map(normalizeSong); }
+function isBuiltInSongId(id = currentSongId) { return builtInSongs().some(song => song.id === id); }
+function localSongs() { return readSongLibrary().sort((a, b) => a.name.localeCompare(b.name)); }
+function allSongs() { return [...builtInSongs(), ...localSongs()]; }
 function readSongLibrary() {
   try {
     const raw = localStorage.getItem(SONG_LIBRARY_KEY);
@@ -222,23 +249,109 @@ function readSongLibrary() {
     return [];
   }
 }
-function writeSongLibrary(songs) { localStorage.setItem(SONG_LIBRARY_KEY, JSON.stringify(songs.map(normalizeSong))); }
-function findSong(id = currentSongId) { return readSongLibrary().find(song => song.id === id); }
+function writeSongLibrary(songs) { localStorage.setItem(SONG_LIBRARY_KEY, JSON.stringify(songs.map(song => normalizeSong({ ...song, readOnly: false })))); }
+function findSong(id = currentSongId) { return allSongs().find(song => song.id === id); }
 function makeBlankSong() { return { id: "", name: "", sections: createDefaultSections(), lastPart: "treble" }; }
 function refreshSavedSongs(selectedId = currentSongId) {
-  const songs = readSongLibrary().sort((a, b) => a.name.localeCompare(b.name));
+  const songs = allSongs();
   savedSongsSelect.innerHTML = "";
   const empty = document.createElement("option");
   empty.value = "";
-  empty.textContent = songs.length ? "Choose a saved song" : "No saved songs";
+  empty.textContent = songs.length ? "Choose a song" : "No songs";
   savedSongsSelect.appendChild(empty);
   songs.forEach(song => {
     const option = document.createElement("option");
     option.value = song.id;
-    option.textContent = song.name;
+    option.textContent = song.name + (song.readOnly ? " (Built-in)" : "");
     savedSongsSelect.appendChild(option);
   });
   if (selectedId && songs.some(song => song.id === selectedId)) savedSongsSelect.value = selectedId;
+}
+function refreshPracticeSongs(selectedId = currentSongId) {
+  if (!practiceSongSelect) return;
+  const songs = allSongs();
+  practiceSongSelect.innerHTML = "";
+  songs.forEach(song => {
+    const option = document.createElement("option");
+    option.value = song.id;
+    option.textContent = song.name;
+    practiceSongSelect.appendChild(option);
+  });
+  if (selectedId && songs.some(song => song.id === selectedId)) practiceSongSelect.value = selectedId;
+}
+function sectionLabel(index) {
+  const section = currentSong.sections[index];
+  const name = section && section.name ? " - " + section.name : "";
+  return "Section " + (index + 1) + name;
+}
+function selectedSectionIndex() {
+  const match = /^section:(\d+)$/.exec(selectedPracticeRange);
+  const index = match ? Number(match[1]) : 0;
+  return Math.max(0, Math.min(currentSong.sections.length - 1, index));
+}
+function practiceSectionIndices() {
+  if (!currentSong.sections.length) return [];
+  if (selectedPracticeRange.startsWith("section:")) return [selectedSectionIndex()];
+  return currentSong.sections.map((_, index) => index);
+}
+function practiceScopeText() {
+  if (selectedPracticeRange.startsWith("section:")) return sectionLabel(selectedSectionIndex()) + " of " + currentSong.sections.length;
+  return "Full Song";
+}
+function renderPracticeRanges() {
+  if (!practiceRangeSelect) return;
+  const previous = selectedPracticeRange;
+  practiceRangeSelect.innerHTML = "";
+  const full = document.createElement("option");
+  full.value = "full";
+  full.textContent = "Full Song";
+  practiceRangeSelect.appendChild(full);
+  currentSong.sections.forEach((_, index) => {
+    const option = document.createElement("option");
+    option.value = "section:" + index;
+    option.textContent = sectionLabel(index);
+    practiceRangeSelect.appendChild(option);
+  });
+  selectedPracticeRange = previous === "full" || currentSong.sections[selectedSectionIndex()] ? previous : "full";
+  if (selectedPracticeRange.startsWith("section:")) selectedPracticeRange = "section:" + selectedSectionIndex();
+  practiceRangeSelect.value = selectedPracticeRange;
+  updatePracticeScopeLabels();
+}
+function updatePracticeScopeLabels() {
+  if (practiceSongLabel) practiceSongLabel.textContent = "Song: " + (currentSong.name || "Unsaved practice song");
+  const scope = practiceScopeText();
+  if (practiceScopeLabel) practiceScopeLabel.textContent = "Practice: " + scope;
+  if (selectedSectionLabel) selectedSectionLabel.textContent = selectedPracticeRange === "full" ? "Full Song" : "Section " + (selectedSectionIndex() + 1);
+  if (prevSectionBtn) prevSectionBtn.disabled = !currentSong.sections.length;
+  if (nextSectionBtn) nextSectionBtn.disabled = !currentSong.sections.length;
+}
+function setPracticeRange(value, { rebuild = true } = {}) {
+  selectedPracticeRange = value === "full" ? "full" : "section:" + Math.max(0, Math.min(currentSong.sections.length - 1, Number(String(value).replace("section:", "")) || 0));
+  if (practiceRangeSelect) practiceRangeSelect.value = selectedPracticeRange;
+  updatePracticeScopeLabels();
+  if (rebuild) {
+    const was = running;
+    if (was) stopReference();
+    resetReference();
+    if (was) startReference();
+  }
+}
+function movePracticeSection(direction) {
+  const current = selectedPracticeRange === "full" ? 0 : selectedSectionIndex();
+  const next = Math.max(0, Math.min(currentSong.sections.length - 1, current + direction));
+  setPracticeRange("section:" + next);
+}
+function setAppMode(mode) {
+  appMode = mode === "edit" ? "edit" : "practice";
+  app.dataset.appMode = appMode;
+  [practiceModeBtn, editModeBtn].forEach(button => {
+    if (!button) return;
+    const active = button.dataset.mode === appMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  if (appMode === "edit" && currentSong.readOnly) updateSongStatus("Built-in song - duplicate to edit");
+  requestVisualResize(40);
 }
 function setDirty(value, message = "") {
   isDirty = !!value;
@@ -248,11 +361,12 @@ function markDirty() { setDirty(true); }
 function updateSongStatus(message = "") {
   if (!songSaveStatusEl) return;
   if (message) songSaveStatusEl.textContent = message;
+  else if (currentSong.readOnly) songSaveStatusEl.textContent = "Built-in song - duplicate to edit";
   else if (isDirty) songSaveStatusEl.textContent = "\u25cf Unsaved changes";
   else if (currentSongId) songSaveStatusEl.textContent = "\u2713 Saved";
   else songSaveStatusEl.textContent = "New song - not saved";
   songSaveStatusEl.classList.toggle("dirty", isDirty);
-  songSaveStatusEl.classList.toggle("saved", !isDirty && !!currentSongId);
+  songSaveStatusEl.classList.toggle("saved", !isDirty && !!currentSongId && !currentSong.readOnly);
 }
 function confirmDiscardChanges(message = "You have unsaved changes. Load another song and discard them?") {
   return !isDirty || window.confirm(message);
@@ -264,6 +378,8 @@ function loadSong(id, { protect = true } = {}) {
   currentSongId = song.id;
   currentSong = normalizeSong(song);
   setDirty(false);
+  refreshPracticeSongs(song.id);
+  refreshSavedSongs(song.id);
   renderWorkspace();
   resetReference();
   return true;
@@ -279,6 +395,7 @@ function clearSelectedSong({ protect = true } = {}) {
   currentSong = makeBlankSong();
   if (savedSongsSelect) savedSongsSelect.value = "";
   setDirty(false, "New song - not saved");
+  refreshPracticeSongs("");
   renderWorkspace();
   resetReference();
   return true;
@@ -298,6 +415,7 @@ function validateCurrentSong() {
   return name;
 }
 function saveCurrentSong() {
+  if (currentSong.readOnly) return duplicateBuiltInSong();
   const name = validateCurrentSong();
   if (!name) return false;
   const songs = readSongLibrary();
@@ -310,9 +428,11 @@ function saveCurrentSong() {
   }
   currentSong.name = name;
   currentSong.id = id;
+  currentSong.readOnly = false;
   songs[index] = normalizeSong(currentSong);
   writeSongLibrary(songs);
   refreshSavedSongs(id);
+  refreshPracticeSongs(id);
   setDirty(false, "\u2713 Saved");
   renderWorkspace();
   resetReference();
@@ -333,36 +453,63 @@ function saveCurrentSongAs() {
   const invalid = currentSong.sections.flatMap(section => [...invalidPatternTokens(section.treblePattern), ...invalidPatternTokens(section.bassPattern)]);
   if (invalid.length) { window.alert("Unsupported tokens: " + [...new Set(invalid)].join(", ")); return false; }
   const id = "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
-  const copy = normalizeSong({ ...currentSong, id, name: cleanName, sections: currentSong.sections.map(section => ({ ...section, id: "" })) });
+  const copy = normalizeSong({ ...currentSong, id, name: cleanName, readOnly: false, sections: currentSong.sections.map(section => ({ ...section, id: "" })) });
   const songs = readSongLibrary();
   songs.push(copy);
   writeSongLibrary(songs);
   currentSongId = id;
   currentSong = normalizeSong(copy);
   refreshSavedSongs(id);
+  refreshPracticeSongs(id);
   setDirty(false, "\u2713 Saved");
   renderWorkspace();
   resetReference();
   return true;
 }
+function duplicateBuiltInSong() {
+  const baseName = (songNameInput.value.trim() || currentSong.name || "Practice Song").replace(/\s+\(Local Copy\)$/i, "");
+  const id = "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  const copy = normalizeSong({
+    ...currentSong,
+    id,
+    name: baseName + " (Local Copy)",
+    readOnly: false,
+    sections: currentSong.sections.map(section => ({ ...section, id: "" }))
+  });
+  const songs = readSongLibrary();
+  songs.push(copy);
+  writeSongLibrary(songs);
+  currentSongId = id;
+  currentSong = normalizeSong(copy);
+  refreshSavedSongs(id);
+  refreshPracticeSongs(id);
+  setDirty(false, "\u2713 Local editable copy created");
+  renderWorkspace();
+  resetReference();
+  setAppMode("edit");
+  return true;
+}
 function deleteSelectedSong() {
   const song = findSong();
   if (!song) { window.alert("Select a saved song to delete."); return; }
+  if (song.readOnly) { window.alert("Built-in songs cannot be deleted. Duplicate it to My Songs if you want an editable copy."); return; }
   if (isDirty && !window.confirm("You have unsaved changes. Delete this saved song and discard them?")) return;
   if (!window.confirm("Delete saved song: " + song.name + "?")) return;
   writeSongLibrary(readSongLibrary().filter(item => item.id !== song.id));
-  const remaining = readSongLibrary();
+  const remaining = allSongs();
   if (remaining.length) {
     const next = remaining.sort((a, b) => a.name.localeCompare(b.name))[0];
     currentSongId = next.id;
     currentSong = normalizeSong(next);
     setDirty(false);
     refreshSavedSongs(next.id);
+    refreshPracticeSongs(next.id);
   } else {
     currentSongId = "";
     currentSong = makeBlankSong();
     setDirty(false, "New song - not saved");
     refreshSavedSongs("");
+    refreshPracticeSongs("");
   }
   renderWorkspace();
   resetReference();
@@ -504,7 +651,9 @@ function buildTimeline() {
 function appendSongLoop() {
   const loopNumber = builtLoopCount + 1;
   const loopStart = totalBeats;
-  currentSong.sections.forEach((section, sectionIndex) => {
+  practiceSectionIndices().forEach(sectionIndex => {
+    const section = currentSong.sections[sectionIndex];
+    if (!section) return;
     const sectionStart = totalBeats;
     const lineCount = patternLineCount(section);
     let lineStart = sectionStart;
@@ -556,7 +705,7 @@ function currentLine(nowBeat) {
 function updateStatus(nowBeat) {
   const section = currentSection(nowBeat);
   const line = currentLine(nowBeat);
-  sectionIndicatorEl.textContent = section ? "Section " + section.sectionNumber + " of " + currentSong.sections.length + (line ? "   Line " + line.lineNumber : "") : "Section -";
+  sectionIndicatorEl.textContent = section ? "Section " + section.sectionNumber + " of " + currentSong.sections.length + (line ? "   Line " + line.lineNumber : "") + "   " + practiceScopeText() : "Section -";
   const currentLoop = isInfiniteLoop() ? completedLoops + 1 : Math.min(loopCount, completedLoops + 1);
   loopStatusEl.textContent = "Loop: " + currentLoop + " / " + (isInfiniteLoop() ? "\u221e" : loopCount) + "   Completed: " + completedLoops;
   highlightActiveLine(line);
@@ -801,6 +950,12 @@ function renderWorkspace() {
   renderPartEditors("treble", trebleEditorsEl);
   renderPartEditors("bass", bassEditorsEl);
   setActiveEditor(document.querySelector("textarea[data-part='" + activeEditorPart + "']") || document.querySelector("textarea[data-part='treble']"));
+  renderPracticeRanges();
+  refreshPracticeSongs(currentSongId);
+  refreshSavedSongs(currentSongId);
+  if (duplicateBuiltInBtn) duplicateBuiltInBtn.hidden = !currentSong.readOnly;
+  if (saveSongBtn) saveSongBtn.disabled = !!currentSong.readOnly;
+  if (deleteSongBtn) deleteSongBtn.disabled = !!currentSong.readOnly;
   updateAllMetrics();
   updateSongStatus();
   buildTimeline();
@@ -842,7 +997,7 @@ function renderPartEditors(part, container) {
     name.addEventListener("keydown", event => event.stopPropagation());
     const actions = document.createElement("div");
     actions.className = "sectionActions";
-    [["up", "Up"], ["down", "Down"], ["duplicate", "Duplicate"], ["delete", "Delete"]].forEach(([action, label]) => {
+    [["practice", "Practice This Section"], ["up", "Up"], ["down", "Down"], ["duplicate", "Duplicate"], ["delete", "Delete"]].forEach(([action, label]) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = action === "delete" ? "danger" : "secondary";
@@ -1020,11 +1175,18 @@ function updateSectionNameFromInput(input) {
   document.querySelectorAll("[data-section-name][data-section-index='" + index + "']").forEach(item => {
     if (item !== input) item.value = input.value;
   });
+  renderPracticeRanges();
   markDirty();
 }
 function handleInlineSectionAction(button) {
   const action = button.dataset.sectionAction;
   const index = Number(button.dataset.sectionIndex);
+  if (action === "practice") {
+    setPracticeRange("section:" + index);
+    setAppMode("practice");
+    if (document.querySelector(".practiceArea") && document.querySelector(".practiceArea").scrollIntoView) document.querySelector(".practiceArea").scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
   if (action === "add") currentSong.sections.push(makeSection());
   if (action === "up" && index > 0) [currentSong.sections[index - 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index - 1]];
   if (action === "down" && index < currentSong.sections.length - 1) [currentSong.sections[index + 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index + 1]];
@@ -1184,7 +1346,7 @@ function requestVisualResize(delay = 0) {
 function updateFullscreenCompactStatus() {
   if (!fullscreenStatus) return;
   fullscreenInstrumentName.textContent = fullscreenInstrument === "bass" ? "Bass" : "Treble / Chenda";
-  fullscreenStatus.textContent = "BPM " + bpm.value + " | " + loopStatusEl.textContent + " | " + playTimerEl.textContent + " | " + sectionIndicatorEl.textContent;
+  fullscreenStatus.textContent = "BPM " + bpm.value + " | " + practiceScopeText() + " | " + loopStatusEl.textContent + " | " + playTimerEl.textContent;
   fullscreenMetronomeBtn.textContent = metronomeOn ? "Metro On" : "Metro Off";
   fullscreenMetronomeBtn.classList.toggle("active", metronomeOn);
   fullscreenMetronomeBtn.setAttribute("aria-pressed", String(metronomeOn));
@@ -1249,7 +1411,7 @@ function syncFullscreenState() {
 function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
 
 function requiredElements() {
-  return { app, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
+  return { app, practiceModeBtn, editModeBtn, practiceSongSelect, practiceRangeSelect, prevSectionBtn, nextSectionBtn, selectedSectionLabel, practiceSongLabel, practiceScopeLabel, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, duplicateBuiltInBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
 function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
 function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
@@ -1259,15 +1421,24 @@ function initializeApp() {
   warnMissingElements();
   writeSongLibrary(readSongLibrary());
   refreshSavedSongs();
+  refreshPracticeSongs(currentSongId);
   applyInstrumentView(instrumentView, { persist: false, redraw: false });
   renderInsertButtons();
   renderDefinitions();
   renderWorkspace();
+  setAppMode("practice");
+  bindEvent(practiceModeBtn, "click", () => setAppMode("practice"), "practice mode");
+  bindEvent(editModeBtn, "click", () => setAppMode("edit"), "edit mode");
+  bindEvent(practiceSongSelect, "change", () => { if (practiceSongSelect.value) loadSong(practiceSongSelect.value); }, "practice song selector");
+  bindEvent(practiceRangeSelect, "change", () => setPracticeRange(practiceRangeSelect.value), "practice range selector");
+  bindEvent(prevSectionBtn, "click", () => movePracticeSection(-1), "previous section");
+  bindEvent(nextSectionBtn, "click", () => movePracticeSection(1), "next section");
   bindEvent(loadSongBtn, "click", loadSelectedSong, "load song");
   bindEvent(savedSongsSelect, "change", () => updateSongStatus(), "saved song dropdown");
   bindEvent(newSongBtn, "click", () => clearSelectedSong(), "new song");
   bindEvent(saveSongBtn, "click", saveCurrentSong, "save song");
   bindEvent(saveAsSongBtn, "click", saveCurrentSongAs, "save as song");
+  bindEvent(duplicateBuiltInBtn, "click", duplicateBuiltInSong, "duplicate built-in song");
   bindEvent(deleteSongBtn, "click", deleteSelectedSong, "delete song");
   bindEvent(songNameInput, "input", updateSongNameFromInput, "song name");
   bindEvent(bpm, "input", () => applyBpm(bpm.value, { restart: true }), "BPM slider");
