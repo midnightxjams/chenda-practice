@@ -449,6 +449,7 @@ const nextSectionBtn = $("nextSection");
 const selectedSectionLabel = $("selectedSectionLabel");
 const practiceSongLabel = $("practiceSongLabel");
 const practiceScopeLabel = $("practiceScopeLabel");
+const includeTransitionToggle = $("includeTransitionToggle");
 const savedSongsSelect = $("savedSongs");
 const loadSongBtn = $("loadSong");
 const newSongBtn = $("newSong");
@@ -504,6 +505,7 @@ let currentSong = cloneSong(BUILT_IN_SONGS[0] || defaultSong);
 let isDirty = false;
 let appMode = "practice";
 let selectedPracticeRange = "full";
+let includeTransitionInSectionPractice = false;
 let activeEditor = null;
 let activeEditorPart = "treble";
 let running = false;
@@ -559,13 +561,20 @@ function sectionRepeatOptions(current) {
 }
 function partLabel(part) { return part === "bass" ? "Bass" : "Treble"; }
 function patternKey(part) { return part === "bass" ? "bassPattern" : "treblePattern"; }
+function normalizeTransition(seed = {}) {
+  return {
+    treblePattern: normalizePatternText(seed.treblePattern || ""),
+    bassPattern: normalizePatternText(seed.bassPattern || "")
+  };
+}
 function makeSection(seed = {}) {
   return {
     id: seed.id || "section-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
     name: seed.name || "",
     repeatCount: normalizeRepeatCount(seed.repeatCount),
     treblePattern: normalizePatternText(seed.treblePattern || ""),
-    bassPattern: normalizePatternText(seed.bassPattern || "")
+    bassPattern: normalizePatternText(seed.bassPattern || ""),
+    transitionAfter: normalizeTransition(seed.transitionAfter)
   };
 }
 function createDefaultSections() { return Array.from({ length: DEFAULT_SECTION_COUNT }, (_, index) => makeSection({ name: "", treblePattern: "", bassPattern: "", id: "section-" + Date.now() + "-" + index + "-" + Math.random().toString(36).slice(2, 8) })); }
@@ -591,8 +600,13 @@ function builtInValidationErrors() {
     (song.sections || []).forEach((section, sectionIndex) => {
       PARTS.forEach(part => {
         splitPatternLines(section[patternKey(part)] || "").forEach((line, lineIndex) => {
-          lineInvalidTokens(line).forEach(token => {
+          invalidPatternTokens(line).forEach(token => {
             errors.push(song.name + " - Section " + (sectionIndex + 1) + " " + (section.name || "") + " - " + partLabel(part) + " line " + (lineIndex + 1) + ": " + token);
+          });
+        });
+        splitPatternLines(section.transitionAfter?.[patternKey(part)] || "").forEach((line, lineIndex) => {
+          invalidPatternTokens(line).forEach(token => {
+            errors.push(song.name + " - Transition after Section " + (sectionIndex + 1) + " " + (section.name || "") + " - " + partLabel(part) + " line " + (lineIndex + 1) + ": " + token);
           });
         });
       });
@@ -649,18 +663,43 @@ function sectionLabel(index) {
   const name = section && section.name ? " - " + section.name : "";
   return "Section " + (index + 1) + name;
 }
+function transitionLabel(index) {
+  const next = currentSong.sections[index + 1];
+  const nextName = next && next.name ? " - " + next.name : "";
+  return "Transition to Section " + (index + 2) + nextName;
+}
+function practiceRangeKind(value = selectedPracticeRange) {
+  if (String(value).startsWith("section:")) return "section";
+  if (String(value).startsWith("transition:")) return "transition";
+  return "full";
+}
+function practiceRangeIndex(value = selectedPracticeRange) {
+  const match = /^(section|transition):(\d+)$/.exec(String(value));
+  return match ? Number(match[2]) : 0;
+}
 function selectedSectionIndex() {
-  const match = /^section:(\d+)$/.exec(selectedPracticeRange);
-  const index = match ? Number(match[1]) : 0;
+  const index = practiceRangeIndex();
   return Math.max(0, Math.min(currentSong.sections.length - 1, index));
+}
+function selectedTransitionIndex() {
+  const max = Math.max(0, currentSong.sections.length - 2);
+  return Math.max(0, Math.min(max, practiceRangeIndex()));
+}
+function normalizePracticeRange(value) {
+  if (value === "full") return "full";
+  if (String(value).startsWith("transition:")) return currentSong.sections.length > 1 ? "transition:" + Math.max(0, Math.min(currentSong.sections.length - 2, practiceRangeIndex(value))) : "full";
+  if (String(value).startsWith("section:")) return "section:" + Math.max(0, Math.min(currentSong.sections.length - 1, practiceRangeIndex(value)));
+  return "full";
 }
 function practiceSectionIndices() {
   if (!currentSong.sections.length) return [];
-  if (selectedPracticeRange.startsWith("section:")) return [selectedSectionIndex()];
+  if (practiceRangeKind() === "section") return [selectedSectionIndex()];
+  if (practiceRangeKind() === "transition") return [selectedTransitionIndex()];
   return currentSong.sections.map((_, index) => index);
 }
 function practiceScopeText() {
-  if (selectedPracticeRange.startsWith("section:")) return sectionLabel(selectedSectionIndex()) + " of " + currentSong.sections.length;
+  if (practiceRangeKind() === "section") return sectionLabel(selectedSectionIndex()) + " of " + currentSong.sections.length;
+  if (practiceRangeKind() === "transition") return transitionLabel(selectedTransitionIndex());
   return "Full Song";
 }
 function renderPracticeRanges() {
@@ -676,9 +715,14 @@ function renderPracticeRanges() {
     option.value = "section:" + index;
     option.textContent = sectionLabel(index);
     practiceRangeSelect.appendChild(option);
+    if (index < currentSong.sections.length - 1) {
+      const transition = document.createElement("option");
+      transition.value = "transition:" + index;
+      transition.textContent = transitionLabel(index);
+      practiceRangeSelect.appendChild(transition);
+    }
   });
-  selectedPracticeRange = previous === "full" || currentSong.sections[selectedSectionIndex()] ? previous : "full";
-  if (selectedPracticeRange.startsWith("section:")) selectedPracticeRange = "section:" + selectedSectionIndex();
+  selectedPracticeRange = normalizePracticeRange(previous);
   practiceRangeSelect.value = selectedPracticeRange;
   updatePracticeScopeLabels();
 }
@@ -686,12 +730,16 @@ function updatePracticeScopeLabels() {
   if (practiceSongLabel) practiceSongLabel.textContent = "Song: " + (currentSong.name || "Unsaved practice song");
   const scope = practiceScopeText();
   if (practiceScopeLabel) practiceScopeLabel.textContent = "Practice: " + scope;
-  if (selectedSectionLabel) selectedSectionLabel.textContent = selectedPracticeRange === "full" ? "Full Song" : "Section " + (selectedSectionIndex() + 1);
+  if (selectedSectionLabel) selectedSectionLabel.textContent = practiceRangeKind() === "full" ? "Full Song" : practiceRangeKind() === "transition" ? "Transition" : "Section " + (selectedSectionIndex() + 1);
+  if (includeTransitionToggle) {
+    includeTransitionToggle.checked = includeTransitionInSectionPractice;
+    includeTransitionToggle.disabled = practiceRangeKind() !== "section" || selectedSectionIndex() >= currentSong.sections.length - 1;
+  }
   if (prevSectionBtn) prevSectionBtn.disabled = !currentSong.sections.length;
   if (nextSectionBtn) nextSectionBtn.disabled = !currentSong.sections.length;
 }
 function setPracticeRange(value, { rebuild = true } = {}) {
-  selectedPracticeRange = value === "full" ? "full" : "section:" + Math.max(0, Math.min(currentSong.sections.length - 1, Number(String(value).replace("section:", "")) || 0));
+  selectedPracticeRange = normalizePracticeRange(value);
   if (practiceRangeSelect) practiceRangeSelect.value = selectedPracticeRange;
   updatePracticeScopeLabels();
   if (rebuild) {
@@ -702,7 +750,7 @@ function setPracticeRange(value, { rebuild = true } = {}) {
   }
 }
 function movePracticeSection(direction) {
-  const current = selectedPracticeRange === "full" ? 0 : selectedSectionIndex();
+  const current = practiceRangeKind() === "full" ? 0 : selectedSectionIndex();
   const next = Math.max(0, Math.min(currentSong.sections.length - 1, current + direction));
   setPracticeRange("section:" + next);
 }
@@ -770,8 +818,9 @@ function validateCurrentSong() {
   if (!name) { window.alert("Enter a song name before saving."); return null; }
   for (let i = 0; i < currentSong.sections.length; i++) {
     const section = currentSong.sections[i];
-    const trebleBad = invalidPatternTokens(section.treblePattern);
-    const bassBad = invalidPatternTokens(section.bassPattern);
+    const transition = transitionAfter(section);
+    const trebleBad = [...invalidPatternTokens(section.treblePattern), ...invalidPatternTokens(transition.treblePattern)];
+    const bassBad = [...invalidPatternTokens(section.bassPattern), ...invalidPatternTokens(transition.bassPattern)];
     if (trebleBad.length || bassBad.length) {
       window.alert("Section " + (i + 1) + " has unsupported tokens: " + [...new Set([...trebleBad, ...bassBad])].join(", "));
       return null;
@@ -815,7 +864,10 @@ function saveCurrentSongAs() {
     }
     return false;
   }
-  const invalid = currentSong.sections.flatMap(section => [...invalidPatternTokens(section.treblePattern), ...invalidPatternTokens(section.bassPattern)]);
+  const invalid = currentSong.sections.flatMap(section => {
+    const transition = transitionAfter(section);
+    return [...invalidPatternTokens(section.treblePattern), ...invalidPatternTokens(section.bassPattern), ...invalidPatternTokens(transition.treblePattern), ...invalidPatternTokens(transition.bassPattern)];
+  });
   if (invalid.length) { window.alert("Unsupported tokens: " + [...new Set(invalid)].join(", ")); return false; }
   const id = "song-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
   const copy = normalizeSong({ ...currentSong, id, name: cleanName, readOnly: false, sections: currentSong.sections.map(section => ({ ...section, id: "" })) });
@@ -903,6 +955,11 @@ function firstTokenAfterLine(pattern, lineIndex) {
 }
 function patternDuration(pattern) { const lines = splitPatternLines(pattern); return lines.reduce((sum, line, index) => sum + measureTokens(tokenize(line).filter(token => tokenDef(token)), firstTokenAfterLine(pattern, index + 1)), 0); }
 function sectionDuration(pattern) { return patternDuration(pattern); }
+function transitionAfter(section) { return normalizeTransition(section && section.transitionAfter); }
+function blockLineCount(block) { return Math.max(1, splitPatternLines(block.treblePattern).length, splitPatternLines(block.bassPattern).length); }
+function blockHasContent(block) {
+  return Array.from({ length: blockLineCount(block) }, (_, index) => lineReferenceInfo(block, index)).some(info => info.duration > 0);
+}
 function measureTokens(tokens, nextLineFirstToken = "") {
   let beat = 0;
   tokens.forEach((token, index) => {
@@ -1016,31 +1073,62 @@ function buildTimeline() {
 function appendSongLoop() {
   const loopNumber = builtLoopCount + 1;
   const loopStart = totalBeats;
-  practiceSectionIndices().forEach(sectionIndex => {
-    const section = currentSong.sections[sectionIndex];
-    if (!section) return;
-    const repeatTotal = selectedPracticeRange === "full" ? sectionRepeatCount(section) : 1;
-    for (let repeatIndex = 1; repeatIndex <= repeatTotal; repeatIndex++) {
-      const sectionStart = totalBeats;
-      const lineCount = patternLineCount(section);
-      let lineStart = sectionStart;
-      for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
-        const reference = lineReferenceInfo(section, lineIndex);
-        if (reference.duration <= 0) continue;
-        const meta = { loopNumber, sectionId: section.id, sectionIndex, sectionNumber: sectionIndex + 1, sectionName: section.name || "", sectionRepeatIndex: repeatIndex, sectionRepeatTotal: repeatTotal, lineIndex, lineNumber: lineIndex + 1 };
-        const trebleDuration = schedulePartLine(section, "treble", lineIndex, lineStart, meta);
-        const bassDuration = schedulePartLine(section, "bass", lineIndex, lineStart, meta);
-        const lineDuration = reference.duration;
-        lineBoundaries.push({ ...meta, referencePart: reference.referencePart, startBeat: lineStart, endBeat: lineStart + lineDuration, trebleDuration, bassDuration });
-        lineStart += lineDuration;
-      }
-      if (lineStart > sectionStart) sectionBoundaries.push({ loopNumber, sectionId: section.id, sectionIndex, sectionNumber: sectionIndex + 1, sectionName: section.name || "", sectionRepeatIndex: repeatIndex, sectionRepeatTotal: repeatTotal, startBeat: sectionStart, endBeat: lineStart });
-      totalBeats = lineStart;
-    }
-  });
+  if (practiceRangeKind() === "transition") {
+    appendTransitionBlock(selectedTransitionIndex(), loopNumber);
+  } else {
+    practiceSectionIndices().forEach(sectionIndex => {
+      const section = currentSong.sections[sectionIndex];
+      if (!section) return;
+      const repeatTotal = practiceRangeKind() === "full" ? sectionRepeatCount(section) : 1;
+      for (let repeatIndex = 1; repeatIndex <= repeatTotal; repeatIndex++) appendSectionBlock(sectionIndex, loopNumber, repeatIndex, repeatTotal);
+      if (shouldAppendTransitionAfter(sectionIndex)) appendTransitionBlock(sectionIndex, loopNumber);
+    });
+  }
   loopEndBeats.push(totalBeats);
   builtLoopCount++;
   return totalBeats - loopStart;
+}
+function shouldAppendTransitionAfter(sectionIndex) {
+  if (sectionIndex >= currentSong.sections.length - 1) return false;
+  if (practiceRangeKind() === "full") return true;
+  return practiceRangeKind() === "section" && includeTransitionInSectionPractice;
+}
+function appendSectionBlock(sectionIndex, loopNumber, repeatIndex, repeatTotal) {
+  const section = currentSong.sections[sectionIndex];
+  if (!section) return 0;
+  const startBeat = totalBeats;
+  const meta = { loopNumber, blockType: "section", sectionId: section.id, sectionIndex, sectionNumber: sectionIndex + 1, sectionName: section.name || "", sectionRepeatIndex: repeatIndex, sectionRepeatTotal: repeatTotal };
+  const endBeat = appendPatternBlock(section, startBeat, meta);
+  if (endBeat > startBeat) sectionBoundaries.push({ ...meta, startBeat, endBeat });
+  totalBeats = endBeat;
+  return endBeat - startBeat;
+}
+function appendTransitionBlock(sectionIndex, loopNumber) {
+  const section = currentSong.sections[sectionIndex];
+  if (!section) return 0;
+  const block = transitionAfter(section);
+  if (!blockHasContent(block)) return 0;
+  const startBeat = totalBeats;
+  const meta = { loopNumber, blockType: "transition", sectionId: section.id, sectionIndex, sectionNumber: sectionIndex + 1, sectionName: section.name || "", sectionRepeatIndex: 1, sectionRepeatTotal: 1, transitionToSectionIndex: sectionIndex + 1, transitionToSectionNumber: sectionIndex + 2, transitionToSectionName: currentSong.sections[sectionIndex + 1]?.name || "" };
+  const endBeat = appendPatternBlock(block, startBeat, meta);
+  if (endBeat > startBeat) sectionBoundaries.push({ ...meta, startBeat, endBeat });
+  totalBeats = endBeat;
+  return endBeat - startBeat;
+}
+function appendPatternBlock(block, startBeat, metaBase) {
+  const lineCount = blockLineCount(block);
+  let lineStart = startBeat;
+  for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+    const reference = lineReferenceInfo(block, lineIndex);
+    if (reference.duration <= 0) continue;
+    const meta = { ...metaBase, lineIndex, lineNumber: lineIndex + 1 };
+    const trebleDuration = schedulePartLine(block, "treble", lineIndex, lineStart, meta);
+    const bassDuration = schedulePartLine(block, "bass", lineIndex, lineStart, meta);
+    const lineDuration = reference.duration;
+    lineBoundaries.push({ ...meta, referencePart: reference.referencePart, startBeat: lineStart, endBeat: lineStart + lineDuration, trebleDuration, bassDuration });
+    lineStart += lineDuration;
+  }
+  return lineStart;
 }
 function schedulePartLine(section, part, lineIndex, lineStart, meta) {
   const tokens = lineTokens(section[patternKey(part)], lineIndex);
@@ -1073,6 +1161,10 @@ function currentLine(nowBeat) {
 }
 function sectionStatusText(section, line) {
   if (!section) return "Section -";
+  if (section.blockType === "transition") {
+    const target = section.transitionToSectionNumber ? "Transition to Section " + section.transitionToSectionNumber + (section.transitionToSectionName ? " - " + section.transitionToSectionName : "") : "Transition";
+    return target + (line ? "   Line " + line.lineNumber : "") + "   " + practiceScopeText();
+  }
   const repeatText = section.sectionRepeatTotal > 1 ? "   Repeat " + section.sectionRepeatIndex + "/" + section.sectionRepeatTotal : "";
   const lineText = line ? "   Line " + line.lineNumber : "";
   return "Section " + section.sectionNumber + " of " + currentSong.sections.length + repeatText + lineText + "   " + practiceScopeText();
@@ -1093,11 +1185,12 @@ function updateStatus(nowBeat) {
 function highlightActiveLine(line) {
   document.querySelectorAll(".lineRow.activeLine").forEach(row => row.classList.remove("activeLine"));
   if (!line || !running) { lastActiveLineKey = ""; return; }
-  const activeKey = line.loopNumber + ":" + line.sectionNumber + ":" + line.sectionRepeatIndex + ":" + line.lineNumber;
+  const activeKey = line.loopNumber + ":" + line.blockType + ":" + line.sectionNumber + ":" + line.sectionRepeatIndex + ":" + line.lineNumber;
   const shouldReveal = activeKey !== lastActiveLineKey;
   lastActiveLineKey = activeKey;
   PARTS.forEach(part => {
-    const row = document.querySelector(".lineRow[data-part='" + part + "'][data-section-index='" + line.sectionIndex + "'][data-line-index='" + line.lineIndex + "']");
+    const transitionSelector = line.blockType === "transition" ? "[data-transition-line='true']" : ":not([data-transition-line='true'])";
+    const row = document.querySelector(".lineRow" + transitionSelector + "[data-part='" + part + "'][data-section-index='" + line.sectionIndex + "'][data-line-index='" + line.lineIndex + "']");
     if (row) {
       row.classList.add("activeLine");
       revealActiveLineInsideEditor(row, shouldReveal);
@@ -1265,7 +1358,8 @@ function drawSectionBands(ctx, nowBeat, sections, hitY, topPad, leadBeats, w, h)
     ctx.moveTo(18, y);
     ctx.lineTo(w - 18, y);
     ctx.stroke();
-    ctx.fillText("Section " + section.sectionNumber + (section.sectionRepeatTotal > 1 ? " Repeat " + section.sectionRepeatIndex + "/" + section.sectionRepeatTotal : ""), 24, y + 14);
+    const label = section.blockType === "transition" ? "Transition to Section " + section.transitionToSectionNumber : "Section " + section.sectionNumber + (section.sectionRepeatTotal > 1 ? " Repeat " + section.sectionRepeatIndex + "/" + section.sectionRepeatTotal : "");
+    ctx.fillText(label, 24, y + 14);
   });
   ctx.restore();
 }
@@ -1446,7 +1540,68 @@ function renderPartEditors(part, container) {
     lineAnalysis.dataset.lineAnalysisPart = part;
     card.append(head, editorShell, restTools, lineAnalysis);
     container.appendChild(card);
+    if (index < currentSong.sections.length - 1) container.appendChild(renderTransitionEditor(part, section, index));
   });
+}
+function renderTransitionEditor(part, section, index) {
+  const card = document.createElement("div");
+  card.className = "transitionCard";
+  card.dataset.sectionIndex = String(index);
+  card.dataset.partCard = part;
+  const head = document.createElement("div");
+  head.className = "transitionHead";
+  const title = document.createElement("div");
+  title.textContent = "Transition to Section " + (index + 2);
+  const metric = document.createElement("div");
+  metric.className = "transitionMetric";
+  metric.dataset.transitionMetricFor = String(index);
+  metric.dataset.transitionMetricPart = part;
+  const practice = document.createElement("button");
+  practice.type = "button";
+  practice.className = "secondary";
+  practice.dataset.sectionAction = "practice-transition";
+  practice.dataset.sectionIndex = String(index);
+  practice.textContent = "Practice Transition";
+  practice.addEventListener("click", event => { event.preventDefault(); handleInlineSectionAction(practice); });
+  head.append(title, metric, practice);
+  const editorShell = document.createElement("div");
+  editorShell.className = "codeEditor transitionEditor";
+  const numbers = document.createElement("pre");
+  numbers.className = "lineNumbers";
+  const textarea = document.createElement("textarea");
+  textarea.spellcheck = false;
+  textarea.value = transitionAfter(section)[patternKey(part)] || "";
+  textarea.dataset.part = part;
+  textarea.dataset.sectionIndex = String(index);
+  textarea.dataset.transitionAfter = "true";
+  textarea.setAttribute("aria-label", partLabel(part) + " transition after section " + (index + 1));
+  numbers.textContent = lineNumberText(textarea.value);
+  editorShell.append(numbers, textarea);
+  const restTools = document.createElement("div");
+  restTools.className = "localRestTools transitionRestTools";
+  const restToolsLabel = document.createElement("span");
+  restToolsLabel.textContent = "Transition Rests";
+  const restButtons = document.createElement("div");
+  restButtons.className = "localRestButtons";
+  supportedRests().forEach(rest => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.dataset.insertToken = rest;
+    button.dataset.insertPart = part;
+    button.dataset.insertSection = String(index);
+    button.dataset.insertTransition = "true";
+    button.textContent = "Rest " + REST_DEFINITIONS[rest].durationBeats;
+    restButtons.appendChild(button);
+  });
+  restTools.append(restToolsLabel, restButtons);
+  const lineAnalysis = document.createElement("div");
+  lineAnalysis.className = "lineAnalysis transitionLineAnalysis";
+  lineAnalysis.dataset.lineAnalysisFor = String(index);
+  lineAnalysis.dataset.lineAnalysisPart = part;
+  lineAnalysis.dataset.transitionAnalysis = "true";
+  card.append(head, editorShell, restTools, lineAnalysis);
+  return card;
 }
 function patternPreview(pattern) {
   const first = splitPatternLines(pattern).map(line => line.trim()).find(Boolean);
@@ -1476,8 +1631,8 @@ function handlePatternPaste(event) {
   setActiveEditor(textarea);
   updatePatternFromEditor(textarea);
 }
-function renderLineAnalysis(section, sectionIndex, part) {
-  const container = document.querySelector("[data-line-analysis-for='" + sectionIndex + "'][data-line-analysis-part='" + part + "']");
+function renderLineAnalysis(section, sectionIndex, part, { transition = false } = {}) {
+  const container = document.querySelector("[data-line-analysis-for='" + sectionIndex + "'][data-line-analysis-part='" + part + "']" + (transition ? "[data-transition-analysis='true']" : ":not([data-transition-analysis='true'])"));
   if (!container) return;
   container.innerHTML = "";
   sectionLineAlignments(section).forEach(info => {
@@ -1486,6 +1641,7 @@ function renderLineAnalysis(section, sectionIndex, part) {
     row.dataset.part = part;
     row.dataset.sectionIndex = String(sectionIndex);
     row.dataset.lineIndex = String(info.line - 1);
+    if (transition) row.dataset.transitionLine = "true";
     const text = document.createElement("span");
     text.textContent = info.text;
     const button = document.createElement("button");
@@ -1494,7 +1650,7 @@ function renderLineAnalysis(section, sectionIndex, part) {
     button.dataset.padSection = String(sectionIndex);
     button.dataset.padLine = String(info.line - 1);
     button.textContent = "Pad Bass Line";
-    button.hidden = !(part === "bass" && info.bassSilentBeats > 0);
+    button.hidden = transition || !(part === "bass" && info.bassSilentBeats > 0);
     const details = document.createElement("details");
     details.className = "lineTiming";
     const summary = document.createElement("summary");
@@ -1520,6 +1676,11 @@ function updateAllMetrics() {
     });
     document.querySelectorAll(".padSection[data-pad-section='" + index + "']").forEach(button => { button.hidden = !(info.bassSilentBeats > 0 && !info.overflow); });
     PARTS.forEach(part => renderLineAnalysis(section, index, part));
+    const transition = transitionAfter(section);
+    const transitionInfo = sectionAlignment(transition);
+    const transitionText = blockHasContent(transition) ? "Transition - Treble: " + beatsText(transitionInfo.treble) + " - Bass: " + beatsText(transitionInfo.bass) + " - " + transitionInfo.text : "Blank transition";
+    document.querySelectorAll("[data-transition-metric-for='" + index + "']").forEach(metric => { metric.textContent = transitionText; });
+    PARTS.forEach(part => renderLineAnalysis(transition, index, part, { transition: true }));
   });
 }
 function setActiveEditor(textarea) {
@@ -1553,7 +1714,12 @@ function updatePatternFromEditor(textarea) {
   const part = textarea.dataset.part === "bass" ? "bass" : "treble";
   if (!currentSong.sections[index]) return;
   syncLineNumbers(textarea);
-  currentSong.sections[index][patternKey(part)] = textarea.value;
+  if (textarea.dataset.transitionAfter === "true") {
+    currentSong.sections[index].transitionAfter = transitionAfter(currentSong.sections[index]);
+    currentSong.sections[index].transitionAfter[patternKey(part)] = textarea.value;
+  } else {
+    currentSong.sections[index][patternKey(part)] = textarea.value;
+  }
   markDirty();
   buildTimeline();
   updateAllMetrics();
@@ -1595,10 +1761,16 @@ function handleInlineSectionAction(button) {
     if (document.querySelector(".practiceArea") && document.querySelector(".practiceArea").scrollIntoView) document.querySelector(".practiceArea").scrollIntoView({ block: "start", behavior: "smooth" });
     return;
   }
+  if (action === "practice-transition") {
+    setPracticeRange("transition:" + index);
+    setAppMode("practice");
+    if (document.querySelector(".practiceArea") && document.querySelector(".practiceArea").scrollIntoView) document.querySelector(".practiceArea").scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
   if (action === "add") currentSong.sections.push(makeSection());
   if (action === "up" && index > 0) [currentSong.sections[index - 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index - 1]];
   if (action === "down" && index < currentSong.sections.length - 1) [currentSong.sections[index + 1], currentSong.sections[index]] = [currentSong.sections[index], currentSong.sections[index + 1]];
-  if (action === "duplicate" && currentSong.sections[index]) currentSong.sections.splice(index + 1, 0, makeSection({ ...currentSong.sections[index], id: "" }));
+  if (action === "duplicate" && currentSong.sections[index]) currentSong.sections.splice(index + 1, 0, makeSection({ ...currentSong.sections[index], id: "", transitionAfter: normalizeTransition() }));
   if (action === "delete") {
     if (currentSong.sections.length <= 1) { window.alert("A song needs at least one section."); return; }
     if (!window.confirm("Delete Section " + (index + 1) + "?")) return;
@@ -1641,8 +1813,8 @@ function insertToken(token) {
   setActiveEditor(activeEditor);
   updatePatternFromEditor(activeEditor);
 }
-function insertTokenForPart(token, part, sectionIndex) {
-  const textarea = document.querySelector("textarea[data-part='" + part + "'][data-section-index='" + sectionIndex + "']");
+function insertTokenForPart(token, part, sectionIndex, transition = false) {
+  const textarea = document.querySelector("textarea[data-part='" + part + "'][data-section-index='" + sectionIndex + "']" + (transition ? "[data-transition-after='true']" : ":not([data-transition-after='true'])"));
   if (textarea) setActiveEditor(textarea);
   insertToken(token);
 }
@@ -1819,7 +1991,7 @@ function syncFullscreenState() {
 function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(min-width: 761px)").matches : window.innerWidth > 760; }
 
 function requiredElements() {
-  return { app, practiceModeBtn, editModeBtn, practiceSongSelect, practiceRangeSelect, prevSectionBtn, nextSectionBtn, selectedSectionLabel, practiceSongLabel, practiceScopeLabel, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, duplicateBuiltInBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
+  return { app, practiceModeBtn, editModeBtn, practiceSongSelect, practiceRangeSelect, prevSectionBtn, nextSectionBtn, selectedSectionLabel, practiceSongLabel, practiceScopeLabel, includeTransitionToggle, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, duplicateBuiltInBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
 function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
 function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
@@ -1840,6 +2012,7 @@ function initializeApp() {
   bindEvent(editModeBtn, "click", () => setAppMode("edit"), "edit mode");
   bindEvent(practiceSongSelect, "change", () => { if (practiceSongSelect.value) loadSong(practiceSongSelect.value); }, "practice song selector");
   bindEvent(practiceRangeSelect, "change", () => setPracticeRange(practiceRangeSelect.value), "practice range selector");
+  bindEvent(includeTransitionToggle, "change", () => { includeTransitionInSectionPractice = includeTransitionToggle.checked; resetReference(); updatePracticeScopeLabels(); }, "include transition toggle");
   bindEvent(prevSectionBtn, "click", () => movePracticeSection(-1), "previous section");
   bindEvent(nextSectionBtn, "click", () => movePracticeSection(1), "next section");
   bindEvent(loadSongBtn, "click", loadSelectedSong, "load song");
@@ -1892,7 +2065,7 @@ function initializeApp() {
     const tokenButton = event.target.closest("[data-insert-token]");
     const isWorkspaceInsert = tokenButton && (insertButtonsEl.contains(tokenButton) || (restInsertButtonsEl && restInsertButtonsEl.contains(tokenButton)));
     if (tokenButton && !isWorkspaceInsert) {
-      if (tokenButton.dataset.insertPart && tokenButton.dataset.insertSection) insertTokenForPart(tokenButton.dataset.insertToken, tokenButton.dataset.insertPart, tokenButton.dataset.insertSection);
+      if (tokenButton.dataset.insertPart && tokenButton.dataset.insertSection) insertTokenForPart(tokenButton.dataset.insertToken, tokenButton.dataset.insertPart, tokenButton.dataset.insertSection, tokenButton.dataset.insertTransition === "true");
       else insertToken(tokenButton.dataset.insertToken);
       return;
     }
