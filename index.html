@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chenda Two-Part Practice Workspace</title>
+<title>Empire Beats 2026</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <main class="app" id="app">
   <header class="topBar">
     <div class="brand">
-      <h1>Chenda Practice Trainer</h1>
+      <h1>Empire Beats 2026</h1>
+      <p class="heroInstructions">Choose Full Song or a section, adjust the BPM if needed, then press Start. Select Treble, Bass, or Both depending on what you want to practice. Section Practice includes the transition by default.</p>
+      <p class="practiceHint">Tip: 450 BPM is the default practice speed. Lower the BPM while learning a difficult section.</p>
       <div class="songTitle" id="songTitle">Unsaved practice song</div>
     </div>
     <div class="topControls">
@@ -33,7 +35,7 @@
         <span id="selectedSectionLabel">Full Song</span>
         <button type="button" class="secondary" id="nextSection">Next Section</button>
       </div>
-      <label class="practiceField includeTransitionField" for="includeTransitionToggle"><span>Section Practice</span><span class="checkRow"><input id="includeTransitionToggle" type="checkbox"> Include transition</span></label>
+      <label class="practiceField includeTransitionField" for="includeTransitionToggle"><span>Section Practice</span><span class="checkRow"><input id="includeTransitionToggle" type="checkbox" checked> Include transition</span></label>
     </section>
 
     <section class="practiceScope" aria-label="Current practice scope">
@@ -51,7 +53,7 @@
         </div>
       </div>
       <span id="sectionIndicator">Section -</span>
-      <span id="loopStatus">Loop: 0 / x4</span>
+      <span id="loopStatus">Loop: 0 / x1</span>
       <span id="playTimer">00:00</span>
     </section>
 
@@ -90,8 +92,8 @@
       <div class="controlGroup bpmControls">
         <label for="bpm">BPM</label>
         <div class="bpmRow">
-          <input id="bpm" type="range" min="100" max="500" value="120">
-          <input id="bpmNumber" class="bpmNumber" type="number" min="100" max="500" value="120" inputmode="numeric" aria-label="BPM number">
+          <input id="bpm" type="range" min="100" max="500" value="450">
+          <input id="bpmNumber" class="bpmNumber" type="number" min="100" max="500" value="450" inputmode="numeric" aria-label="BPM number">
         </div>
       </div>
 
@@ -107,9 +109,9 @@
       <div class="controlGroup loopControls">
         <label>Loop</label>
         <div class="loopChoices">
-          <button type="button" class="loop" data-loop="1">x1</button>
+          <button type="button" class="loop active" data-loop="1">x1</button>
           <button type="button" class="loop" data-loop="2">x2</button>
-          <button type="button" class="loop active" data-loop="4">x4</button>
+          <button type="button" class="loop" data-loop="4">x4</button>
           <button type="button" class="loop" data-loop="6">x6</button>
           <button type="button" class="loop" data-loop="Infinity">&infin;</button>
         </div>
@@ -179,7 +181,7 @@
     </section>
   </section>
 
-  <footer class="appFooter">Chenda Practice Trainer v0.1.0</footer>
+  <footer class="appFooter">Empire Beats 2026 v0.1.0</footer>
 
   <div class="fullscreenChoice" id="fullscreenChoice" hidden>
     <div class="fullscreenChoicePanel">
@@ -193,7 +195,7 @@
   <div class="fullscreenControls" id="fullscreenControls">
     <div class="fullscreenInfo">
       <strong id="fullscreenInstrumentName">Practice</strong>
-      <span id="fullscreenStatus">BPM 120 | Loop: 0 / x4 | 00:00</span>
+      <span id="fullscreenStatus">BPM 450 | Loop: 0 / x1 | 00:00</span>
     </div>
     <button id="fullscreenStart" type="button">Start</button>
     <button class="secondary" id="fullscreenStop" type="button">Stop</button>

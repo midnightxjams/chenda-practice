@@ -338,14 +338,14 @@ let currentSong = cloneSong(BUILT_IN_SONGS[0] || defaultSong);
 let isDirty = false;
 let appMode = "practice";
 let selectedPracticeRange = "full";
-let includeTransitionInSectionPractice = false;
+let includeTransitionInSectionPractice = true;
 let activeEditor = null;
 let activeEditorPart = "treble";
 let running = false;
 let startTime = 0;
 let pauseElapsed = 0;
 let raf = 0;
-let loopCount = 4;
+let loopCount = 1;
 let builtLoopCount = 0;
 let totalBeats = 0;
 let completedLoops = 0;
@@ -1829,8 +1829,8 @@ function isDesktopViewport() { return window.matchMedia ? window.matchMedia("(mi
 function requiredElements() {
   return { app, practiceModeBtn, editModeBtn, practiceSongSelect, practiceRangeSelect, prevSectionBtn, nextSectionBtn, selectedSectionLabel, practiceSongLabel, practiceScopeLabel, includeTransitionToggle, savedSongsSelect, loadSongBtn, newSongBtn, saveSongBtn, saveAsSongBtn, duplicateBuiltInBtn, deleteSongBtn, songNameInput, songSaveStatusEl, bpm, bpmNumber, metronomeToggle, metronomeVolume, metronomeSubdivision, startBtn, stopBtn, restartBtn, fullscreenBtn, fullscreenChoice, fullscreenTrebleBtn, fullscreenBassBtn, fullscreenCancelBtn, fullscreenStartBtn, fullscreenStopBtn, fullscreenRestartBtn, fullscreenMetronomeBtn, exitFullscreenBtn, trebleEditorsEl, bassEditorsEl, insertButtonsEl, restInsertButtonsEl, activeEditorLabel, sectionIndicatorEl, loopStatusEl, playTimerEl };
 }
-function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Chenda Practice Trainer missing required elements:", missing.join(", ")); }
-function bindEvent(element, type, handler, name) { if (!element) { console.warn("Chenda Practice Trainer could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
+function warnMissingElements() { const missing = Object.entries(requiredElements()).filter(([, element]) => !element).map(([name]) => name); if (missing.length) console.warn("Empire Beats 2026 missing required elements:", missing.join(", ")); }
+function bindEvent(element, type, handler, name) { if (!element) { console.warn("Empire Beats 2026 could not bind " + name + ": missing element."); return; } element.addEventListener(type, handler); }
 function initializeApp() {
   if (appInitialized) return;
   appInitialized = true;
@@ -1884,7 +1884,7 @@ function initializeApp() {
   bindEvent(insertButtonsEl, "click", event => { const button = event.target.closest("[data-insert-token]"); if (button) insertToken(button.dataset.insertToken); }, "insert buttons");
   bindEvent(restInsertButtonsEl, "pointerdown", event => { if (event.target.closest("[data-insert-token]")) event.preventDefault(); }, "rest insert pointer guard");
   bindEvent(restInsertButtonsEl, "click", event => { const button = event.target.closest("[data-insert-token]"); if (button) insertToken(button.dataset.insertToken); }, "rest insert buttons");
-  if (!insertTargetButtons.length) console.warn("Chenda Practice Trainer missing insert target buttons.");
+  if (!insertTargetButtons.length) console.warn("Empire Beats 2026 missing insert target buttons.");
   insertTargetButtons.forEach(button => button.addEventListener("click", () => setInsertTarget(button.dataset.insertTarget)));
   document.addEventListener("focusin", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });
   document.addEventListener("keyup", event => { if (event.target.matches && event.target.matches("textarea[data-part]")) setActiveEditor(event.target); });

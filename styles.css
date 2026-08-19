@@ -30,13 +30,25 @@ select,input[type=number],input[type=text]{height:40px;padding:0 10px}
 textarea{width:100%;min-height:92px;padding:10px;line-height:1.45;text-transform:uppercase;resize:vertical;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal}
 textarea:focus,input:focus,select:focus{outline:2px solid rgba(66,200,200,.42);outline-offset:2px}
 .app{width:min(1480px,calc(100vw - 28px));margin:0 auto;padding:18px 0 26px}
-.topBar{display:flex;justify-content:space-between;align-items:end;gap:14px;margin-bottom:12px}
+.topBar{display:grid;grid-template-columns:minmax(150px,1fr) minmax(0,2.4fr) minmax(150px,1fr);align-items:start;gap:14px;margin-bottom:12px}
+.brand{grid-column:2;text-align:center;display:grid;justify-items:center;gap:5px}
+.brand::after{content:"";width:min(260px,58vw);height:1px;background:linear-gradient(90deg,transparent,rgba(242,185,75,.78),rgba(66,200,200,.5),transparent);box-shadow:0 0 18px rgba(242,185,75,.18);margin-top:2px}
 .topControls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.topBar .topControls{grid-column:3}
 .modeSwitch{display:grid;grid-template-columns:1fr 1fr;gap:6px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.05);padding:5px}
 .modeButton{min-height:36px;background:#2b303d;color:var(--ink);border:1px solid #495063}
 .modeButton.active{background:var(--gold);color:#090a0e;border-color:transparent}
-h1{margin:0;font-size:clamp(1.8rem,3.4vw,3.8rem);line-height:.96;letter-spacing:0;font-weight:950}
-.songTitle{margin-top:6px;color:var(--gold);font-size:1rem;font-weight:900}
+h1{margin:0;font-size:clamp(2rem,4vw,3.7rem);line-height:1;letter-spacing:0;font-weight:950;text-align:center;color:#fff8ec;text-shadow:0 0 16px rgba(242,185,75,.2),0 0 34px rgba(66,200,200,.12);animation:titleGlow 7s ease-in-out infinite}
+.heroInstructions{max-width:820px;margin:2px 0 0;color:rgba(255,248,236,.76);font-size:clamp(.86rem,1.35vw,1rem);line-height:1.35;font-weight:700;text-align:center}
+.practiceHint{max-width:760px;margin:0;color:rgba(183,171,153,.72);font-size:clamp(.78rem,1.1vw,.9rem);line-height:1.3;font-weight:750;text-align:center}
+.songTitle{margin-top:1px;color:var(--gold);font-size:.95rem;font-weight:900;text-align:center}
+@keyframes titleGlow{
+  0%,100%{text-shadow:0 0 14px rgba(242,185,75,.18),0 0 34px rgba(66,200,200,.1)}
+  50%{text-shadow:0 0 22px rgba(242,185,75,.34),0 0 48px rgba(66,200,200,.18)}
+}
+@media(prefers-reduced-motion:reduce){
+  h1{animation:none;text-shadow:0 0 12px rgba(242,185,75,.16)}
+}
 .status{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.06);padding:8px 12px;color:var(--muted);white-space:nowrap}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(233,90,69,.14)}
 .playing .dot{background:var(--green);box-shadow:0 0 0 4px rgba(96,214,127,.14)}
@@ -228,10 +240,16 @@ body.mobile-practice-focus-mode .fullscreenControls button,body.mobile-practice-
 }
 @media(max-width:760px){
   .app{width:100%;max-width:100vw;padding:12px 9px 18px}
-  .topBar{align-items:start;flex-direction:column}
+  .topBar{display:grid;grid-template-columns:1fr;gap:10px}
+  .brand,.topBar .topControls{grid-column:1}
+  .brand{gap:4px}
+  .brand::after{width:min(230px,68vw)}
   .topControls{width:100%;justify-content:space-between}
   .modeSwitch{width:100%}
-  h1{font-size:clamp(1.75rem,10vw,2.8rem)}
+  h1{font-size:clamp(1.9rem,10vw,2.75rem)}
+  .heroInstructions{font-size:.84rem;line-height:1.3;max-width:34rem}
+  .practiceHint{font-size:.76rem;line-height:1.25;max-width:32rem}
+  .songTitle{font-size:.88rem}
   .controlBar{grid-template-columns:1fr;gap:9px}
   .practiceSetup{grid-template-columns:1fr}
   .sectionNav{grid-template-columns:1fr}
